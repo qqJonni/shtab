@@ -1,0 +1,38 @@
+{% extends "base.html" %}
+{% block title %}Вход — ШТАБ{% endblock %}
+{% block anonymous %}
+<div class="auth-page">
+  <div class="container">
+    <div class="row justify-content-center">
+      <div class="col-sm-10 col-md-7 col-lg-5 col-xl-4">
+        <div class="auth-card">
+          <div class="text-center mb-4">
+            <div class="auth-logo-icon"><i class="bi bi-building"></i></div>
+            <h4 class="fw-bold mb-1">ШТАБ</h4>
+            <p class="text-muted mb-0">Войдите в систему</p>
+          </div>
+          {% with msgs = get_flashed_messages(with_categories=true) %}
+            {% for cat, msg in msgs %}
+              <div class="alert alert-{{ cat }} py-2 px-3">{{ msg }}</div>
+            {% endfor %}
+          {% endwith %}
+          <form method="post">
+            <div class="mb-3">
+              <label class="form-label">Логин</label>
+              <input type="text" name="username" class="form-control" required autofocus>
+            </div>
+            <div class="mb-4">
+              <label class="form-label">Пароль</label>
+              <input type="password" name="password" class="form-control" required>
+            </div>
+            <button type="submit" class="btn btn-primary w-100">Войти</button>
+          </form>
+          <div class="text-center mt-3">
+            <a href="{{ url_for('register_view') }}" class="text-decoration-none" style="font-size:14px">Регистрация</a>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
