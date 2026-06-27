@@ -33,4 +33,13 @@ UPLOAD_FOLDER = os.path.join(BASE_DIR, 'static', 'uploads')
 DOCS_FOLDER = os.path.join(BASE_DIR, 'static', 'docs')
 AVATARS_FOLDER = os.path.join(BASE_DIR, 'static', 'avatars')
 DEFECTS_FOLDER = os.path.join(BASE_DIR, 'static', 'defects')
+PACKAGES_FOLDER = os.path.join(BASE_DIR, 'static', 'packages')
 MAX_CONTENT_LENGTH = 100 * 1024 * 1024
+
+APPROVAL_CHAIN = [
+    ('inspector', 'Технадзор'),
+    ('foreman',   'Прораб'),
+    ('pto',       'Инженер ПТО'),
+    ('manager',   'Руководитель'),
+    ('accountant', 'Бухгалтер'),
+]

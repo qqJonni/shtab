@@ -62,6 +62,23 @@ ROLE_SECTIONS = {
 }
 
 
+def _package_counts(role=None):
+    from db import query_db
+    if role:
+        pending = query_db(
+            "SELECT COUNT(*) as c FROM approval_steps WHERE role = ? AND status = 'pending'",
+            (role,), one=True)['c']
+    else:
+        pending = 0
+    return {
+        'pending': pending,
+        'total': query_db("SELECT COUNT(*) as c FROM doc_packages", one=True)['c'],
+        'in_review': query_db("SELECT COUNT(*) as c FROM doc_packages WHERE status='in_review'", one=True)['c'],
+        'returned': query_db("SELECT COUNT(*) as c FROM doc_packages WHERE status='returned'", one=True)['c'],
+        'completed': query_db("SELECT COUNT(*) as c FROM doc_packages WHERE status='completed'", one=True)['c'],
+    }
+
+
 def _defect_counts_all():
     from db import query_db
     return {
@@ -89,9 +106,10 @@ def register(app):
             abort(403)
         from db import query_db
         dc = _defect_counts_all()
+        pc = _package_counts()
         import config
         return render_template('dashboards/admin.html',
-                               role_label=config.ROLES.get('admin'), dc=dc)
+                               role_label=config.ROLES.get('admin'), dc=dc, pc=pc)
 
     @app.route('/dashboard/manager')
     @login_required
@@ -100,9 +118,10 @@ def register(app):
             abort(403)
         from db import query_db
         dc = _defect_counts_all()
+        pc = _package_counts('manager')
         import config
         return render_template('dashboards/manager.html',
-                               role_label=config.ROLES.get('manager'), dc=dc)
+                               role_label=config.ROLES.get('manager'), dc=dc, pc=pc)
 
     @app.route('/dashboard/pto')
     @login_required
@@ -131,13 +150,14 @@ def register(app):
             total_substages += cnt
             substages_in_progress += s['sub_in_progress']
             substages_done += s['sub_done']
+        pc = _package_counts('pto')
         import config
         return render_template('dashboards/pto.html',
                                stages=stages_list, stages_no_subs=stages_no_subs,
                                total_substages=total_substages,
                                substages_in_progress=substages_in_progress,
                                substages_done=substages_done,
-                               role_label=config.ROLES.get('pto'))
+                               role_label=config.ROLES.get('pto'), pc=pc)
 
     @app.route('/dashboard/inspector')
     @login_required
@@ -152,11 +172,12 @@ def register(app):
         overdue = query_db(
             "SELECT COUNT(*) as c FROM defects WHERE due_date < date('now') AND status NOT IN ('closed','verified')",
             one=True)['c']
+        pc = _package_counts('inspector')
         import config
         return render_template('dashboards/inspector.html',
                                role_label=config.ROLES.get('inspector'),
                                open_cnt=open_cnt, resolved_cnt=resolved_cnt,
-                               my_created=my_created, overdue=overdue)
+                               my_created=my_created, overdue=overdue, pc=pc)
 
     @app.route('/dashboard/foreman')
     @login_required
@@ -168,11 +189,12 @@ def register(app):
         my_created = query_db("SELECT COUNT(*) as c FROM defects WHERE reporter_id=?",
                               (current_user.id,), one=True)['c']
         in_progress = query_db("SELECT COUNT(*) as c FROM defects WHERE status='in_progress'", one=True)['c']
+        pc = _package_counts('foreman')
         import config
         return render_template('dashboards/foreman.html',
                                role_label=config.ROLES.get('foreman'),
                                open_cnt=open_cnt, my_created=my_created,
-                               in_progress=in_progress)
+                               in_progress=in_progress, pc=pc)
 
     @app.route('/dashboard/supply')
     @login_required
@@ -182,7 +204,23 @@ def register(app):
     @app.route('/dashboard/accountant')
     @login_required
     def dashboard_accountant():
-        return _render('accountant')
+        if current_user.role != 'accountant' and current_user.role != 'admin':
+            abort(403)
+        from db import query_db
+        pc = _package_counts('accountant')
+        completed = query_db(
+            "SELECT dp.*, ss.name as substage_name, cs.name as stage_name, "
+            "o.name as object_name, org.name as contractor_name "
+            "FROM doc_packages dp "
+            "JOIN substages ss ON dp.substage_id = ss.id "
+            "JOIN construction_stages cs ON ss.stage_id = cs.id "
+            "JOIN objects o ON cs.object_id = o.id "
+            "LEFT JOIN organizations org ON dp.contractor_id = org.id "
+            "WHERE dp.status = 'completed' ORDER BY dp.completed_at DESC LIMIT 10")
+        import config
+        return render_template('dashboards/accountant.html',
+                               role_label=config.ROLES.get('accountant'),
+                               pc=pc, completed=completed)
 
     @app.route('/dashboard/contractor')
     @login_required
@@ -212,11 +250,19 @@ def register(app):
         defect_overdue = query_db(
             "SELECT COUNT(*) as c FROM defects WHERE contractor_id=? AND due_date < date('now') AND status NOT IN ('closed','verified')",
             (org_id,), one=True)['c']
+        pkg_in_review = query_db("SELECT COUNT(*) as c FROM doc_packages WHERE contractor_id=? AND status='in_review'",
+                                  (org_id,), one=True)['c']
+        pkg_returned = query_db("SELECT COUNT(*) as c FROM doc_packages WHERE contractor_id=? AND status='returned'",
+                                (org_id,), one=True)['c']
+        pkg_completed = query_db("SELECT COUNT(*) as c FROM doc_packages WHERE contractor_id=? AND status='completed'",
+                                 (org_id,), one=True)['c']
         import config
         return render_template('dashboards/contractor.html',
                                stages=stages_list, role_label=config.ROLES.get('contractor'),
                                defect_open=defect_open, defect_in_progress=defect_in_progress,
-                               defect_overdue=defect_overdue)
+                               defect_overdue=defect_overdue,
+                               pkg_in_review=pkg_in_review, pkg_returned=pkg_returned,
+                               pkg_completed=pkg_completed)
 
     @app.route('/dashboard/guest')
     @login_required

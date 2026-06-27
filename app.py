@@ -94,12 +94,13 @@ def create_app():
 
 
 def register_routes(app):
-    from routes import auth, notifications, dashboards, objects, defects
+    from routes import auth, notifications, dashboards, objects, defects, packages
     auth.register(app)
     notifications.register(app)
     dashboards.register(app)
     objects.register(app)
     defects.register(app)
+    packages.register(app)
 
 
 def init_db():
@@ -202,6 +203,40 @@ def init_db():
             filename TEXT NOT NULL,
             uploaded_by INTEGER REFERENCES users(id),
             uploaded_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+
+        CREATE TABLE IF NOT EXISTS doc_packages (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            substage_id INTEGER NOT NULL REFERENCES substages(id),
+            contractor_id INTEGER REFERENCES organizations(id),
+            created_by INTEGER NOT NULL REFERENCES users(id),
+            status TEXT NOT NULL DEFAULT 'draft' CHECK(status IN ('draft', 'in_review', 'returned', 'approved', 'completed')),
+            return_to_role TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            submitted_at TIMESTAMP,
+            completed_at TIMESTAMP
+        );
+
+        CREATE TABLE IF NOT EXISTS package_documents (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            package_id INTEGER NOT NULL REFERENCES doc_packages(id) ON DELETE CASCADE,
+            doc_type TEXT NOT NULL DEFAULT 'free_form' CHECK(doc_type IN ('ks2', 'ks3', 'invoice', 'raw_material_report', 'free_form')),
+            title TEXT NOT NULL,
+            filename TEXT,
+            is_generated INTEGER NOT NULL DEFAULT 0,
+            data_json TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+
+        CREATE TABLE IF NOT EXISTS approval_steps (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            package_id INTEGER NOT NULL REFERENCES doc_packages(id) ON DELETE CASCADE,
+            step_order INTEGER NOT NULL,
+            role TEXT NOT NULL,
+            status TEXT NOT NULL DEFAULT 'waiting' CHECK(status IN ('waiting', 'pending', 'approved', 'returned')),
+            approver_id INTEGER REFERENCES users(id),
+            comment TEXT,
+            acted_at TIMESTAMP
         );
 
         CREATE TABLE IF NOT EXISTS defect_types (
@@ -322,10 +357,43 @@ def _seed(db):
 
 
 def run_migrations(db):
-    pass
+    def _col_exists(table, col):
+        cols = [r[1] for r in db.execute(f"PRAGMA table_info({table})").fetchall()]
+        return col in cols
+
+    # M4-S6: реквизиты организаций
+    for col, typedef in [
+        ('address', 'TEXT'), ('ogrn', 'TEXT'), ('okpo', 'TEXT'),
+        ('phone', 'TEXT'), ('rep_position', 'TEXT'), ('rep_name', 'TEXT'),
+    ]:
+        if not _col_exists('organizations', col):
+            db.execute(f'ALTER TABLE organizations ADD COLUMN {col} {typedef}')
+
+    # M4-S6: реквизиты объектов
+    for col, typedef in [
+        ('construction_name', 'TEXT'), ('construction_address', 'TEXT'),
+        ('cadastral_number', 'TEXT'),
+    ]:
+        if not _col_exists('objects', col):
+            db.execute(f'ALTER TABLE objects ADD COLUMN {col} {typedef}')
+
+    # M4-S6: договорные данные этапа
+    for col, typedef in [
+        ('contract_number', 'TEXT'), ('contract_date', 'DATE'),
+        ('contract_amount', 'REAL'),
+    ]:
+        if not _col_exists('construction_stages', col):
+            db.execute(f'ALTER TABLE construction_stages ADD COLUMN {col} {typedef}')
+
+    # M4-S6: дефолтная ставка НДС
+    existing = db.execute("SELECT id FROM settings WHERE key='vat_rate'").fetchone()
+    if not existing:
+        db.execute("INSERT INTO settings (key, value) VALUES ('vat_rate', '20')")
+
+    db.commit()
 
 
-for folder in (config.UPLOAD_FOLDER, config.DOCS_FOLDER, config.AVATARS_FOLDER, config.DEFECTS_FOLDER):
+for folder in (config.UPLOAD_FOLDER, config.DOCS_FOLDER, config.AVATARS_FOLDER, config.DEFECTS_FOLDER, config.PACKAGES_FOLDER):
     os.makedirs(folder, exist_ok=True)
 
 app = create_app()

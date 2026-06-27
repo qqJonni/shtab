@@ -1,0 +1,142 @@
+{% extends "packages/forms/_base_form.html" %}
+
+{% set ed = existing_data or {} %}
+{% set inv = prefill.investor %}
+{% set con = prefill.contractor %}
+{% set stg = prefill.stage %}
+
+{% block form_header %}
+<div class="row g-3">
+  <div class="col-sm-3">
+    <label class="form-label">Счёт-фактура №</label>
+    <input type="text" id="hDocNum" class="form-control" value="{{ ed.doc_number or '1' }}">
+  </div>
+  <div class="col-sm-3">
+    <label class="form-label">от</label>
+    <input type="date" id="hDocDate" class="form-control" value="{{ ed.doc_date or '' }}">
+  </div>
+  <div class="col-sm-3">
+    <label class="form-label">Исправление №</label>
+    <input type="text" id="hCorrNum" class="form-control" value="{{ ed.correction_number or '' }}" placeholder="—">
+  </div>
+  <div class="col-sm-3">
+    <label class="form-label">от</label>
+    <input type="date" id="hCorrDate" class="form-control" value="{{ ed.correction_date or '' }}">
+  </div>
+</div>
+
+<hr class="my-3"><h6 class="fw-bold mb-3" style="font-size:13px">Продавец (Подрядчик)</h6>
+<div class="row g-3">
+  <div class="col-sm-6"><label class="form-label">Название</label><input type="text" id="hConName" class="form-control" value="{{ ed.contractor_name or con.name or '' }}"></div>
+  <div class="col-sm-6"><label class="form-label">Адрес</label><input type="text" id="hConAddr" class="form-control" value="{{ ed.contractor_address or con.address or '' }}"></div>
+  <div class="col-sm-3"><label class="form-label">ИНН</label><input type="text" id="hConInn" class="form-control" value="{{ ed.contractor_inn or con.inn or '' }}"></div>
+  <div class="col-sm-3"><label class="form-label">КПП</label><input type="text" id="hConKpp" class="form-control" value="{{ ed.contractor_kpp or con.kpp or '' }}"></div>
+  <div class="col-sm-3"><label class="form-label">Руководитель</label><input type="text" id="hConHead" class="form-control" value="{{ ed.contractor_head or con.rep_name or '' }}"></div>
+  <div class="col-sm-3"><label class="form-label">Гл. бухгалтер</label><input type="text" id="hConAccountant" class="form-control" value="{{ ed.contractor_accountant or '' }}"></div>
+</div>
+
+<hr class="my-3"><h6 class="fw-bold mb-3" style="font-size:13px">Покупатель (Заказчик)</h6>
+<div class="row g-3">
+  <div class="col-sm-6"><label class="form-label">Название</label><input type="text" id="hCustName" class="form-control" value="{{ ed.customer_name or inv.name or '' }}"></div>
+  <div class="col-sm-6"><label class="form-label">Адрес</label><input type="text" id="hCustAddr" class="form-control" value="{{ ed.customer_address or inv.address or '' }}"></div>
+  <div class="col-sm-3"><label class="form-label">ИНН</label><input type="text" id="hCustInn" class="form-control" value="{{ ed.customer_inn or inv.inn or '' }}"></div>
+  <div class="col-sm-3"><label class="form-label">КПП</label><input type="text" id="hCustKpp" class="form-control" value="{{ ed.customer_kpp or inv.kpp or '' }}"></div>
+</div>
+
+<hr class="my-3"><h6 class="fw-bold mb-3" style="font-size:13px">Дополнительно</h6>
+<div class="row g-3">
+  <div class="col-sm-6"><label class="form-label">Грузоотправитель</label><input type="text" id="hShipper" class="form-control" value="{{ ed.shipper or '' }}" placeholder="он же (по умолчанию)"></div>
+  <div class="col-sm-6"><label class="form-label">Грузополучатель</label><input type="text" id="hConsignee" class="form-control" value="{{ ed.consignee or '' }}" placeholder="он же (по умолчанию)"></div>
+  <div class="col-sm-6"><label class="form-label">К платёжно-расчётному документу</label><input type="text" id="hPayDoc" class="form-control" value="{{ ed.payment_doc or '' }}" placeholder="№ от дата"></div>
+  <div class="col-sm-6"><label class="form-label">Валюта: наименование, код</label><input type="text" id="hCurrency" class="form-control" value="{{ ed.currency or 'Российский рубль, 643' }}"></div>
+</div>
+{% endblock %}
+
+{% block table_headers %}
+<th style="width:35px">№</th>
+<th>Наименование</th>
+<th style="width:65px">Ед.</th>
+<th style="width:80px">Кол-во</th>
+<th style="width:95px">Цена (₽)</th>
+<th style="width:105px">Стоимость без НДС</th>
+<th style="width:65px">Ставка НДС</th>
+<th style="width:95px">Сумма НДС</th>
+<th style="width:105px">Стоимость с НДС</th>
+<th style="width:30px"></th>
+{% endblock %}
+
+{% block table_footer %}
+<tr style="border-top:2px solid var(--border)">
+  <td colspan="5" class="text-end fw-bold">Итого:</td>
+  <td class="fw-bold" id="calcTotal">0.00</td>
+  <td></td>
+  <td class="fw-bold" id="calcVatCol">0.00</td>
+  <td class="fw-bold" id="calcGrandCol">0.00</td>
+  <td></td>
+</tr>
+{% endblock %}
+
+{% block row_template %}
+calc.rowTemplate = function(num, data) {
+  return '<td class="row-num">' + num + '</td>' +
+    '<td><input type="text" data-col="name" class="form-control form-control-sm" value="' + (data.name||'') + '"></td>' +
+    '<td><input type="text" data-col="unit" class="form-control form-control-sm" value="' + (data.unit||'') + '" style="width:55px"></td>' +
+    '<td><input type="number" data-col="quantity" class="form-control form-control-sm" step="0.01" value="' + (data.quantity||'') + '"></td>' +
+    '<td><input type="number" data-col="price" class="form-control form-control-sm" step="0.01" value="' + (data.price||'') + '"></td>' +
+    '<td data-col="amount" class="fw-medium">0.00</td>' +
+    '<td data-col="vat_rate_display" class="text-muted text-center" style="font-size:12px">—</td>' +
+    '<td data-col="vat_amount" class="text-muted">0.00</td>' +
+    '<td data-col="amount_with_vat" class="fw-medium">0.00</td>' +
+    '<td><button type="button" class="btn btn-sm btn-outline-danger py-0 px-1" onclick="calc.removeRow(this)"><i class="bi bi-x"></i></button></td>';
+};
+
+calc.calc = function() {
+  var vatMode = document.getElementById('vatMode')?.value || 'none';
+  var vatRate = parseFloat(document.getElementById('vatRate')?.value) || 0;
+  var rows = this.table.querySelectorAll('tbody tr');
+  var totalNoVat = 0, totalVat = 0, totalWithVat = 0;
+  rows.forEach(function(row) {
+    var qty = parseFloat(row.querySelector('[data-col="quantity"]')?.value) || 0;
+    var price = parseFloat(row.querySelector('[data-col="price"]')?.value) || 0;
+    var amount = qty * price;
+    var lineVat = 0, lineTotal = amount;
+    if (vatMode === 'on_top') { lineVat = amount * vatRate / 100; lineTotal = amount + lineVat; }
+    else if (vatMode === 'included') { lineVat = amount * vatRate / (100 + vatRate); amount = amount - lineVat; lineTotal = amount + lineVat; }
+
+    row.querySelector('[data-col="amount"]').textContent = amount.toFixed(2);
+    row.querySelector('[data-col="vat_rate_display"]').textContent = vatMode === 'none' ? 'Без НДС' : vatRate + '%';
+    row.querySelector('[data-col="vat_amount"]').textContent = lineVat.toFixed(2);
+    row.querySelector('[data-col="amount_with_vat"]').textContent = lineTotal.toFixed(2);
+    totalNoVat += amount; totalVat += lineVat; totalWithVat += lineTotal;
+  });
+  var el;
+  el = document.getElementById('calcTotal'); if(el) el.textContent = totalNoVat.toFixed(2);
+  el = document.getElementById('calcVatCol'); if(el) el.textContent = totalVat.toFixed(2);
+  el = document.getElementById('calcGrandCol'); if(el) el.textContent = totalWithVat.toFixed(2);
+  el = document.getElementById('calcTotalVat'); if(el) el.textContent = totalNoVat.toFixed(2);
+  el = document.getElementById('calcVat'); if(el) el.textContent = totalVat.toFixed(2);
+  el = document.getElementById('calcGrand'); if(el) el.textContent = totalWithVat.toFixed(2);
+};
+{% endblock %}
+
+{% block collect_data %}
+function gv(id) { var e = document.getElementById(id); return e ? e.value : ''; }
+function collectFormData() {
+  return {
+    title: 'Счёт-фактура №' + gv('hDocNum'),
+    doc_type: 'invoice',
+    doc_number: gv('hDocNum'), doc_date: gv('hDocDate'),
+    correction_number: gv('hCorrNum'), correction_date: gv('hCorrDate'),
+    contractor_name: gv('hConName'), contractor_address: gv('hConAddr'),
+    contractor_inn: gv('hConInn'), contractor_kpp: gv('hConKpp'),
+    contractor_head: gv('hConHead'), contractor_accountant: gv('hConAccountant'),
+    customer_name: gv('hCustName'), customer_address: gv('hCustAddr'),
+    customer_inn: gv('hCustInn'), customer_kpp: gv('hCustKpp'),
+    shipper: gv('hShipper'), consignee: gv('hConsignee'),
+    payment_doc: gv('hPayDoc'), currency: gv('hCurrency'),
+    items: calc.collectData(),
+    vat_mode: document.getElementById('vatMode').value,
+    vat_rate: document.getElementById('vatRate').value,
+  };
+}
+{% endblock %}

@@ -1,0 +1,34 @@
+{% extends "base.html" %}
+{% block title %}Организации — ШТАБ{% endblock %}
+{% block topbar_title %}Организации{% endblock %}
+{% block content %}
+<h4 class="fw-bold mb-3">Организации</h4>
+<div class="card">
+  <div class="table-responsive">
+    <table class="table table-hover mb-0">
+      <thead>
+        <tr>
+          <th>Название</th>
+          <th>Тип</th>
+          <th>ИНН</th>
+          <th>Представитель</th>
+          <th class="text-end">Действия</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for o in orgs %}
+        <tr>
+          <td class="fw-medium">{{ o.name }}</td>
+          <td>{% if o.type == 'developer' %}<span class="badge badge-progress">Заказчик</span>{% else %}<span class="badge badge-pending">Подрядчик</span>{% endif %}</td>
+          <td class="text-muted" style="font-size:13px">{{ o.inn or '—' }}</td>
+          <td style="font-size:13px">{{ o.rep_name or '—' }}</td>
+          <td class="text-end">
+            <a href="{{ url_for('organization_edit', org_id=o.id) }}" class="btn btn-sm btn-outline-primary py-0 px-1"><i class="bi bi-pencil"></i></a>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

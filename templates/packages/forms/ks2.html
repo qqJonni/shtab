@@ -1,0 +1,135 @@
+{% extends "packages/forms/_base_form.html" %}
+
+{% set ed = existing_data or {} %}
+{% set inv = prefill.investor %}
+{% set con = prefill.contractor %}
+{% set obj = prefill.obj %}
+{% set stg = prefill.stage %}
+
+{% block form_header %}
+<div class="row g-3">
+  {# Номер/дата акта и период #}
+  <div class="col-sm-3">
+    <label class="form-label">Акт №</label>
+    <input type="text" id="hActNum" class="form-control" value="{{ ed.act_number or '1' }}">
+  </div>
+  <div class="col-sm-3">
+    <label class="form-label">Дата акта</label>
+    <input type="date" id="hActDate" class="form-control" value="{{ ed.act_date or '' }}">
+  </div>
+  <div class="col-sm-3">
+    <label class="form-label">Период с</label>
+    <input type="date" id="hPeriodFrom" class="form-control" value="{{ ed.period_from or '' }}">
+  </div>
+  <div class="col-sm-3">
+    <label class="form-label">по</label>
+    <input type="date" id="hPeriodTo" class="form-control" value="{{ ed.period_to or '' }}">
+  </div>
+</div>
+
+<hr class="my-3"><h6 class="fw-bold mb-3" style="font-size:13px">Инвестор</h6>
+<div class="row g-3">
+  <div class="col-sm-6"><label class="form-label">Название</label><input type="text" id="hInvName" class="form-control" value="{{ ed.investor_name or inv.name or '' }}"></div>
+  <div class="col-sm-3"><label class="form-label">ИНН</label><input type="text" id="hInvInn" class="form-control" value="{{ ed.investor_inn or inv.inn or '' }}"></div>
+  <div class="col-sm-3"><label class="form-label">КПП</label><input type="text" id="hInvKpp" class="form-control" value="{{ ed.investor_kpp or inv.kpp or '' }}"></div>
+  <div class="col-sm-6"><label class="form-label">Адрес</label><input type="text" id="hInvAddr" class="form-control" value="{{ ed.investor_address or inv.address or '' }}"></div>
+  <div class="col-sm-3"><label class="form-label">ОКПО</label><input type="text" id="hInvOkpo" class="form-control" value="{{ ed.investor_okpo or inv.okpo or '' }}"></div>
+  <div class="col-sm-3"><label class="form-label">Тел.</label><input type="text" id="hInvPhone" class="form-control" value="{{ ed.investor_phone or inv.phone or '' }}"></div>
+</div>
+
+<hr class="my-3"><h6 class="fw-bold mb-3" style="font-size:13px">Заказчик (Генподрядчик)</h6>
+<div class="row g-3">
+  <div class="col-sm-6"><label class="form-label">Название</label><input type="text" id="hCustName" class="form-control" value="{{ ed.customer_name or inv.name or '' }}"></div>
+  <div class="col-sm-3"><label class="form-label">ИНН</label><input type="text" id="hCustInn" class="form-control" value="{{ ed.customer_inn or inv.inn or '' }}"></div>
+  <div class="col-sm-3"><label class="form-label">КПП</label><input type="text" id="hCustKpp" class="form-control" value="{{ ed.customer_kpp or inv.kpp or '' }}"></div>
+  <div class="col-sm-6"><label class="form-label">Адрес</label><input type="text" id="hCustAddr" class="form-control" value="{{ ed.customer_address or inv.address or '' }}"></div>
+  <div class="col-sm-3"><label class="form-label">ОКПО</label><input type="text" id="hCustOkpo" class="form-control" value="{{ ed.customer_okpo or inv.okpo or '' }}"></div>
+  <div class="col-sm-3"><label class="form-label">Тел.</label><input type="text" id="hCustPhone" class="form-control" value="{{ ed.customer_phone or inv.phone or '' }}"></div>
+  <div class="col-sm-4"><label class="form-label">Должность представителя</label><input type="text" id="hCustRepPos" class="form-control" value="{{ ed.customer_rep_position or inv.rep_position or '' }}"></div>
+  <div class="col-sm-4"><label class="form-label">ФИО представителя</label><input type="text" id="hCustRepName" class="form-control" value="{{ ed.customer_rep_name or inv.rep_name or '' }}"></div>
+</div>
+
+<hr class="my-3"><h6 class="fw-bold mb-3" style="font-size:13px">Подрядчик (Субподрядчик)</h6>
+<div class="row g-3">
+  <div class="col-sm-6"><label class="form-label">Название</label><input type="text" id="hConName" class="form-control" value="{{ ed.contractor_name or con.name or '' }}"></div>
+  <div class="col-sm-3"><label class="form-label">ИНН</label><input type="text" id="hConInn" class="form-control" value="{{ ed.contractor_inn or con.inn or '' }}"></div>
+  <div class="col-sm-3"><label class="form-label">КПП</label><input type="text" id="hConKpp" class="form-control" value="{{ ed.contractor_kpp or con.kpp or '' }}"></div>
+  <div class="col-sm-6"><label class="form-label">Адрес</label><input type="text" id="hConAddr" class="form-control" value="{{ ed.contractor_address or con.address or '' }}"></div>
+  <div class="col-sm-3"><label class="form-label">ОКПО</label><input type="text" id="hConOkpo" class="form-control" value="{{ ed.contractor_okpo or con.okpo or '' }}"></div>
+  <div class="col-sm-3"><label class="form-label">Тел.</label><input type="text" id="hConPhone" class="form-control" value="{{ ed.contractor_phone or con.phone or '' }}"></div>
+  <div class="col-sm-4"><label class="form-label">Должность представителя</label><input type="text" id="hConRepPos" class="form-control" value="{{ ed.contractor_rep_position or con.rep_position or '' }}"></div>
+  <div class="col-sm-4"><label class="form-label">ФИО представителя</label><input type="text" id="hConRepName" class="form-control" value="{{ ed.contractor_rep_name or con.rep_name or '' }}"></div>
+</div>
+
+<hr class="my-3"><h6 class="fw-bold mb-3" style="font-size:13px">Дополнительная информация</h6>
+<div class="row g-3">
+  <div class="col-sm-6"><label class="form-label">Наименование стройки</label><input type="text" id="hConstruction" class="form-control" value="{{ ed.construction_name or obj.construction_name or obj.name or '' }}"></div>
+  <div class="col-sm-6"><label class="form-label">Адрес стройки</label><input type="text" id="hConsAddr" class="form-control" value="{{ ed.construction_address or obj.construction_address or obj.address or '' }}"></div>
+  <div class="col-sm-6"><label class="form-label">Объект</label><input type="text" id="hObject" class="form-control" value="{{ ed.object_name or obj.name or '' }}"></div>
+  <div class="col-sm-3"><label class="form-label">Договор №</label><input type="text" id="hContractNum" class="form-control" value="{{ ed.contract_number or stg.contract_number or '' }}"></div>
+  <div class="col-sm-3"><label class="form-label">от</label><input type="date" id="hContractDate" class="form-control" value="{{ ed.contract_date or stg.contract_date or '' }}"></div>
+  <div class="col-sm-4"><label class="form-label">Сметная стоимость (₽)</label><input type="number" id="hSmetaCost" class="form-control" step="0.01" value="{{ ed.smeta_cost or stg.contract_amount or '' }}"></div>
+  <div class="col-sm-4"><label class="form-label">ОКДП</label><input type="text" id="hOkdp" class="form-control" value="{{ ed.okdp or '' }}"></div>
+  <div class="col-sm-4"><label class="form-label">Вид операции</label><input type="text" id="hOperation" class="form-control" value="{{ ed.operation_type or '' }}"></div>
+</div>
+{% endblock %}
+
+{% block table_headers %}
+<th style="width:40px">№</th>
+<th style="width:80px">№ по смете</th>
+<th>Наименование работ</th>
+<th style="width:90px">№ расценки</th>
+<th style="width:70px">Ед.</th>
+<th style="width:90px">Кол-во</th>
+<th style="width:100px">Цена (₽)</th>
+<th style="width:110px">Сумма (₽)</th>
+<th style="width:35px"></th>
+{% endblock %}
+
+{% block table_footer %}
+<tr style="border-top:2px solid var(--border)">
+  <td colspan="7" class="text-end fw-bold">Итого:</td>
+  <td class="fw-bold" id="calcTotal">0.00</td>
+  <td></td>
+</tr>
+{% endblock %}
+
+{% block row_template %}
+calc.rowTemplate = function(num, data) {
+  return '<td class="row-num">' + num + '</td>' +
+    '<td><input type="text" data-col="smeta_num" class="form-control form-control-sm" value="' + (data.smeta_num||'') + '" style="width:70px"></td>' +
+    '<td><input type="text" data-col="name" class="form-control form-control-sm" value="' + (data.name||'') + '"></td>' +
+    '<td><input type="text" data-col="rate_num" class="form-control form-control-sm" value="' + (data.rate_num||'') + '" style="width:80px"></td>' +
+    '<td><input type="text" data-col="unit" class="form-control form-control-sm" value="' + (data.unit||'') + '" style="width:60px"></td>' +
+    '<td><input type="number" data-col="quantity" class="form-control form-control-sm" step="0.01" value="' + (data.quantity||'') + '"></td>' +
+    '<td><input type="number" data-col="price" class="form-control form-control-sm" step="0.01" value="' + (data.price||'') + '"></td>' +
+    '<td class="fw-medium" data-col="amount">0.00</td>' +
+    '<td><button type="button" class="btn btn-sm btn-outline-danger py-0 px-1" onclick="calc.removeRow(this)"><i class="bi bi-x"></i></button></td>';
+};
+{% endblock %}
+
+{% block collect_data %}
+function gv(id) { var e = document.getElementById(id); return e ? e.value : ''; }
+function collectFormData() {
+  return {
+    title: 'КС-2 Акт №' + gv('hActNum'),
+    doc_type: 'ks2',
+    act_number: gv('hActNum'), act_date: gv('hActDate'),
+    period_from: gv('hPeriodFrom'), period_to: gv('hPeriodTo'),
+    investor_name: gv('hInvName'), investor_inn: gv('hInvInn'), investor_kpp: gv('hInvKpp'),
+    investor_address: gv('hInvAddr'), investor_okpo: gv('hInvOkpo'), investor_phone: gv('hInvPhone'),
+    customer_name: gv('hCustName'), customer_inn: gv('hCustInn'), customer_kpp: gv('hCustKpp'),
+    customer_address: gv('hCustAddr'), customer_okpo: gv('hCustOkpo'), customer_phone: gv('hCustPhone'),
+    customer_rep_position: gv('hCustRepPos'), customer_rep_name: gv('hCustRepName'),
+    contractor_name: gv('hConName'), contractor_inn: gv('hConInn'), contractor_kpp: gv('hConKpp'),
+    contractor_address: gv('hConAddr'), contractor_okpo: gv('hConOkpo'), contractor_phone: gv('hConPhone'),
+    contractor_rep_position: gv('hConRepPos'), contractor_rep_name: gv('hConRepName'),
+    construction_name: gv('hConstruction'), construction_address: gv('hConsAddr'),
+    object_name: gv('hObject'), contract_number: gv('hContractNum'), contract_date: gv('hContractDate'),
+    smeta_cost: gv('hSmetaCost'), okdp: gv('hOkdp'), operation_type: gv('hOperation'),
+    items: calc.collectData(),
+    vat_mode: document.getElementById('vatMode').value,
+    vat_rate: document.getElementById('vatRate').value,
+  };
+}
+{% endblock %}

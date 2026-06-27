@@ -1,0 +1,56 @@
+{% extends "base.html" %}
+{% block title %}Дашборд — ШТАБ{% endblock %}
+{% block topbar_title %}Дашборд · {{ role_label }}{% endblock %}
+{% block content %}
+<h4 class="fw-bold mb-1">Добро пожаловать, {{ current_user.full_name or current_user.username }}!</h4>
+<p class="text-muted mb-4">{{ role_label }}</p>
+
+<div class="row g-3 mb-4">
+  <div class="col-6 col-lg-4">
+    <a href="{{ url_for('packages_list') }}" class="text-decoration-none">
+      <div class="stat-card">
+        <div class="stat-card-icon" style="background:rgba(59,130,246,0.08);color:var(--primary)"><i class="bi bi-check2-square"></i></div>
+        <div><div class="stat-card-value">{{ pc.pending }}</div><div class="stat-card-label">На мне сейчас</div></div>
+      </div>
+    </a>
+  </div>
+  <div class="col-6 col-lg-4">
+    <a href="{{ url_for('packages_list') }}" class="text-decoration-none">
+      <div class="stat-card">
+        <div class="stat-card-icon" style="background:rgba(16,185,129,0.08);color:var(--success)"><i class="bi bi-check-circle"></i></div>
+        <div><div class="stat-card-value">{{ pc.completed }}</div><div class="stat-card-label">Завершённых пакетов</div></div>
+      </div>
+    </a>
+  </div>
+</div>
+
+{% if completed %}
+<h6 class="fw-bold mb-3">Последние завершённые пакеты</h6>
+<div class="card">
+  <div class="table-responsive">
+    <table class="table table-hover mb-0">
+      <thead>
+        <tr>
+          <th>#</th>
+          <th>Подэтап</th>
+          <th>Объект / Этап</th>
+          <th>Подрядчик</th>
+          <th>Дата</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for p in completed %}
+        <tr>
+          <td class="text-muted">{{ p.id }}</td>
+          <td><a href="{{ url_for('package_detail', package_id=p.id) }}" class="fw-medium text-decoration-none" style="color:var(--text-main)">{{ p.substage_name }}</a></td>
+          <td style="font-size:13px"><div>{{ p.object_name }}</div><div class="text-muted">{{ p.stage_name }}</div></td>
+          <td style="font-size:13px">{{ p.contractor_name or '—' }}</td>
+          <td class="text-muted" style="font-size:13px">{{ p.completed_at[:10] if p.completed_at else '—' }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endif %}
+{% endblock %}

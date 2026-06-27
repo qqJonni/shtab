@@ -20,6 +20,42 @@ DOC_TYPE_LABELS = {
 
 def register(app):
 
+    # ═══ Организации ═══
+
+    @app.route('/organizations')
+    @login_required
+    @role_required('admin', 'manager')
+    def organizations_list():
+        orgs = query_db('SELECT * FROM organizations ORDER BY type, name')
+        return render_template('organizations/list.html', orgs=orgs)
+
+    @app.route('/organizations/<int:org_id>/edit', methods=['GET', 'POST'])
+    @login_required
+    @role_required('admin', 'manager')
+    def organization_edit(org_id):
+        org = query_db('SELECT * FROM organizations WHERE id = ?', (org_id,), one=True)
+        if not org:
+            abort(404)
+        if request.method == 'POST':
+            execute_db(
+                'UPDATE organizations SET name=?, inn=?, kpp=?, address=?, ogrn=?, okpo=?, phone=?, '
+                'rep_position=?, rep_name=? WHERE id=?',
+                (request.form.get('name', '').strip(),
+                 request.form.get('inn', '').strip(),
+                 request.form.get('kpp', '').strip(),
+                 request.form.get('address', '').strip(),
+                 request.form.get('ogrn', '').strip(),
+                 request.form.get('okpo', '').strip(),
+                 request.form.get('phone', '').strip(),
+                 request.form.get('rep_position', '').strip(),
+                 request.form.get('rep_name', '').strip(),
+                 org_id))
+            flash('Организация обновлена.', 'success')
+            return redirect(url_for('organizations_list'))
+        return render_template('organizations/edit.html', org=org)
+
+    # ═══ Объекты ═══
+
     @app.route('/objects')
     @login_required
     @role_required(*VIEWERS)
@@ -41,14 +77,18 @@ def register(app):
             name = request.form.get('name', '').strip()
             address = request.form.get('address', '').strip()
             obj_type = request.form.get('type', '').strip()
+            construction_name = request.form.get('construction_name', '').strip()
+            construction_address = request.form.get('construction_address', '').strip()
+            cadastral_number = request.form.get('cadastral_number', '').strip()
 
             if not name:
                 flash('Введите название объекта.', 'danger')
                 return render_template('objects/form.html', obj=None)
 
             execute_db(
-                'INSERT INTO objects (name, address, type, created_by) VALUES (?, ?, ?, ?)',
-                (name, address, obj_type, current_user.id),
+                'INSERT INTO objects (name, address, type, construction_name, construction_address, cadastral_number, created_by) '
+                'VALUES (?, ?, ?, ?, ?, ?, ?)',
+                (name, address, obj_type, construction_name, construction_address, cadastral_number, current_user.id),
             )
             flash('Объект создан.', 'success')
             return redirect(url_for('objects_list'))
@@ -83,14 +123,17 @@ def register(app):
             name = request.form.get('name', '').strip()
             address = request.form.get('address', '').strip()
             obj_type = request.form.get('type', '').strip()
+            construction_name = request.form.get('construction_name', '').strip()
+            construction_address = request.form.get('construction_address', '').strip()
+            cadastral_number = request.form.get('cadastral_number', '').strip()
 
             if not name:
                 flash('Введите название объекта.', 'danger')
                 return render_template('objects/form.html', obj=obj)
 
             execute_db(
-                'UPDATE objects SET name = ?, address = ?, type = ? WHERE id = ?',
-                (name, address, obj_type, obj_id),
+                'UPDATE objects SET name=?, address=?, type=?, construction_name=?, construction_address=?, cadastral_number=? WHERE id=?',
+                (name, address, obj_type, construction_name, construction_address, cadastral_number, obj_id),
             )
             flash('Объект обновлён.', 'success')
             return redirect(url_for('object_detail', obj_id=obj_id))
@@ -244,6 +287,17 @@ def register(app):
 
         if request.method == 'POST':
             contractor_id = request.form.get('contractor_id', '').strip()
+            contract_number = request.form.get('contract_number', '').strip()
+            contract_date = request.form.get('contract_date', '').strip() or None
+            contract_amount = request.form.get('contract_amount', '').strip() or None
+            try:
+                contract_amount = float(contract_amount) if contract_amount else None
+            except ValueError:
+                contract_amount = None
+
+            execute_db(
+                'UPDATE construction_stages SET contract_number=?, contract_date=?, contract_amount=? WHERE id=?',
+                (contract_number, contract_date, contract_amount, stage_id))
 
             if contractor_id:
                 contractor_id = int(contractor_id)
@@ -558,11 +612,15 @@ def register(app):
             'FROM substage_photos sp LEFT JOIN users u ON sp.uploaded_by = u.id '
             'WHERE sp.substage_id = ? ORDER BY sp.uploaded_at DESC', (sub_id,))
         photos_list = [dict(p) for p in photos]
+        package = query_db(
+            "SELECT * FROM doc_packages WHERE substage_id = ? AND status != 'completed' ORDER BY id DESC LIMIT 1",
+            (sub_id,), one=True)
         return render_template('objects/substage_detail.html',
                                sub=sub, stage=stage, photos=photos, photos_json=photos_list,
                                status_labels=STATUS_LABELS,
                                can_change_status=_can_change_substage_status(stage),
-                               can_upload_photo=_can_upload_substage_photo(stage))
+                               can_upload_photo=_can_upload_substage_photo(stage),
+                               package=package)
 
     @app.route('/substages/<int:sub_id>/status', methods=['POST'])
     @login_required

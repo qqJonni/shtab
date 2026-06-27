@@ -1,0 +1,185 @@
+{% extends "base.html" %}
+{% block title %}{{ doc_type_label }} — ШТАБ{% endblock %}
+{% block topbar_title %}{{ doc_type_label }} · Пакет #{{ pkg.id }}{% endblock %}
+{% block content %}
+<div class="mb-3">
+  <a href="{{ url_for('package_detail', package_id=pkg.id) }}" class="text-decoration-none" style="font-size:13px">
+    <i class="bi bi-arrow-left me-1"></i>Пакет #{{ pkg.id }}
+  </a>
+  {% if service_link %}
+    <a href="{{ service_link }}" target="_blank" class="ms-3 text-muted" style="font-size:12px">
+      <i class="bi bi-box-arrow-up-right me-1"></i>Справка: service-online.su
+    </a>
+  {% endif %}
+</div>
+
+<h4 class="fw-bold mb-4">{{ doc_type_label }}</h4>
+
+<form method="post" id="docForm">
+  <input type="hidden" name="data_json" id="dataJsonField">
+
+  {# ═══ ШАПКА — переопределяется в конкретной форме ═══ #}
+  <div class="card mb-4">
+    <div class="card-body p-4">
+      <h6 class="fw-bold mb-3">Реквизиты</h6>
+      {% block form_header %}{% endblock %}
+    </div>
+  </div>
+
+  {# ═══ ТАБЛИЦА ПОЗИЦИЙ ═══ #}
+  <div class="card mb-4">
+    <div class="card-body p-4">
+      <div class="d-flex justify-content-between align-items-center mb-3">
+        <h6 class="fw-bold mb-0">Позиции</h6>
+        <button type="button" class="btn btn-sm btn-outline-primary" onclick="calc.addRow()"><i class="bi bi-plus-lg me-1"></i>Добавить строку</button>
+      </div>
+      <div class="table-responsive">
+        <table class="table table-hover mb-0" id="itemsTable">
+          <thead>
+            <tr>
+              {% block table_headers %}
+              <th style="width:40px">№</th>
+              <th>Наименование</th>
+              <th style="width:80px">Ед.</th>
+              <th style="width:100px">Кол-во</th>
+              <th style="width:120px">Цена (₽)</th>
+              <th style="width:120px">Сумма (₽)</th>
+              <th style="width:40px"></th>
+              {% endblock %}
+            </tr>
+          </thead>
+          <tbody>
+          </tbody>
+          <tfoot>
+            {% block table_footer %}
+            <tr style="border-top:2px solid var(--border)">
+              <td colspan="5" class="text-end fw-bold">Итого:</td>
+              <td class="fw-bold" id="calcTotal">0.00</td>
+              <td></td>
+            </tr>
+            {% endblock %}
+          </tfoot>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  {# ═══ НДС ═══ #}
+  <div class="card mb-4">
+    <div class="card-body p-4">
+      <div class="row g-3 align-items-center">
+        <div class="col-sm-4">
+          <label class="form-label">НДС</label>
+          <select id="vatMode" class="form-select">
+            <option value="none">Без НДС</option>
+            <option value="on_top" selected>НДС сверху</option>
+            <option value="included">В т.ч. НДС</option>
+          </select>
+        </div>
+        <div class="col-sm-2">
+          <label class="form-label">Ставка %</label>
+          <input type="number" id="vatRate" class="form-control" value="{{ prefill.vat_rate }}" min="0" max="100">
+        </div>
+        <div class="col-sm-6">
+          <div class="row g-2 mt-2">
+            <div class="col-4 text-center">
+              <div class="text-muted" style="font-size:11px">Итого</div>
+              <div class="fw-bold" id="calcTotalVat">0.00</div>
+            </div>
+            <div class="col-4 text-center">
+              <div class="text-muted" style="font-size:11px">НДС</div>
+              <div class="fw-bold" style="color:var(--warning)" id="calcVat">0.00</div>
+            </div>
+            <div class="col-4 text-center">
+              <div class="text-muted" style="font-size:11px">Всего</div>
+              <div class="fw-bold" style="color:var(--primary);font-size:18px" id="calcGrand">0.00</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  {# ═══ Доп. блоки — переопределяются ═══ #}
+  {% block form_extra %}{% endblock %}
+
+  {# ═══ Кнопки ═══ #}
+  <div class="d-flex gap-2">
+    <button type="submit" class="btn btn-success" onclick="return prepareSubmit()"><i class="bi bi-file-earmark-check me-1"></i>Сформировать документ</button>
+    <a href="{{ url_for('package_detail', package_id=pkg.id) }}" class="btn btn-outline-secondary">Отмена</a>
+  </div>
+</form>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/doc_calc.js') }}"></script>
+<script>
+var calc = new DocCalc('itemsTable', {
+  totalId: 'calcTotal',
+  vatId: 'calcVat',
+  grandId: 'calcGrand',
+  vatModeId: 'vatMode',
+  vatRateId: 'vatRate',
+  onCalc: function(total) {
+    document.getElementById('calcTotalVat').textContent = total.toFixed(2);
+  }
+});
+
+{% block row_template %}
+calc.rowTemplate = function(num, data) {
+  return '<td class="row-num">' + num + '</td>' +
+    '<td><input type="text" data-col="name" class="form-control form-control-sm" value="' + (data.name||'') + '"></td>' +
+    '<td><input type="text" data-col="unit" class="form-control form-control-sm" value="' + (data.unit||'') + '" style="width:70px"></td>' +
+    '<td><input type="number" data-col="quantity" class="form-control form-control-sm" step="0.01" value="' + (data.quantity||'') + '"></td>' +
+    '<td><input type="number" data-col="price" class="form-control form-control-sm" step="0.01" value="' + (data.price||'') + '"></td>' +
+    '<td class="fw-medium" data-col="amount">0.00</td>' +
+    '<td><button type="button" class="btn btn-sm btn-outline-danger py-0 px-1" onclick="calc.removeRow(this)"><i class="bi bi-x"></i></button></td>';
+};
+{% endblock %}
+
+{% block init_rows %}
+{% if existing_data and existing_data.items %}
+  {% for item in existing_data.items %}
+  calc.addRow({{ item|tojson }});
+  {% endfor %}
+{% elif prefill and prefill.substages %}
+  {% for s in prefill.substages %}
+    {% if s.volume and s.unit_price %}
+  calc.addRow({name: {{ s.name|tojson }}, unit: {{ s.unit|tojson }}, quantity: {{ s.volume }}, price: {{ s.unit_price }}});
+    {% endif %}
+  {% endfor %}
+{% endif %}
+if (calc.table.querySelectorAll('tbody tr').length === 0) calc.addRow();
+{% endblock %}
+
+{% if existing_data %}
+  {% if existing_data.vat_mode %}
+  document.getElementById('vatMode').value = {{ existing_data.vat_mode|tojson }};
+  {% endif %}
+  {% if existing_data.vat_rate %}
+  document.getElementById('vatRate').value = {{ existing_data.vat_rate|tojson }};
+  {% endif %}
+{% endif %}
+calc.calc();
+
+function prepareSubmit() {
+  var data = collectFormData();
+  document.getElementById('dataJsonField').value = JSON.stringify(data);
+  return true;
+}
+
+{% block collect_data %}
+function collectFormData() {
+  return {
+    title: {{ doc_type_label|tojson }},
+    doc_type: {{ doc_type|tojson }},
+    items: calc.collectData(),
+    vat_mode: document.getElementById('vatMode').value,
+    vat_rate: document.getElementById('vatRate').value,
+  };
+}
+{% endblock %}
+
+{% block extra_scripts %}{% endblock %}
+</script>
+{% endblock %}

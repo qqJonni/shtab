@@ -108,10 +108,23 @@
   </div>
 {% endif %}
 
+{% if pc.pending > 0 %}
+<h6 class="fw-bold mb-3 mt-4">Согласования</h6>
+<div class="row g-3 mb-4">
+  <div class="col-6 col-lg-4">
+    <a href="{{ url_for('packages_list') }}" class="text-decoration-none">
+      <div class="stat-card">
+        <div class="stat-card-icon" style="background:rgba(59,130,246,0.08);color:var(--primary)"><i class="bi bi-check2-square"></i></div>
+        <div><div class="stat-card-value">{{ pc.pending }}</div><div class="stat-card-label">На мне сейчас</div></div>
+      </div>
+    </a>
+  </div>
+</div>
+{% endif %}
+
 {# Заглушки #}
 <div class="row g-3 mt-4">
   {% for s in [
-    {'icon': 'bi-check2-square', 'title': 'Согласования', 'text': 'Проверка и согласование пакетов документов'},
     {'icon': 'bi-box-seam', 'title': 'Заявки на материал', 'text': 'Проверка заявок на давальческий материал'},
     {'icon': 'bi-exclamation-triangle', 'title': 'Замечания', 'text': 'Просмотр и контроль замечаний'},
   ] %}

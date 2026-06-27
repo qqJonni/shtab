@@ -1,0 +1,63 @@
+{% extends "base.html" %}
+{% block title %}Согласования — ШТАБ{% endblock %}
+{% block topbar_title %}Пакеты документов{% endblock %}
+{% block content %}
+<h4 class="fw-bold mb-3">Пакеты документов</h4>
+
+{% if not pkgs %}
+  <div class="card">
+    <div class="card-body text-center py-5 text-muted">
+      <i class="bi bi-folder" style="font-size:48px;opacity:.3"></i>
+      <p class="mt-3 mb-0">Пакетов пока нет.</p>
+    </div>
+  </div>
+{% else %}
+  <div class="card">
+    <div class="table-responsive">
+      <table class="table table-hover mb-0">
+        <thead>
+          <tr>
+            <th style="width:40px">#</th>
+            <th>Подэтап</th>
+            <th>Объект / Этап</th>
+            {% if current_user.role != 'contractor' %}<th>Подрядчик</th>{% endif %}
+            <th>Статус</th>
+            <th>Дата</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for p in pkgs %}
+          <tr {% if p.id in my_pending %}style="background:rgba(59,130,246,0.04)"{% endif %}>
+            <td class="text-muted">{{ p.id }}</td>
+            <td>
+              <a href="{{ url_for('package_detail', package_id=p.id) }}" class="fw-medium text-decoration-none" style="color:var(--text-main)">
+                {{ p.substage_name }}
+              </a>
+              {% if p.id in my_pending %}
+                <span class="badge badge-progress ms-1" style="font-size:10px">Ваша очередь</span>
+              {% endif %}
+            </td>
+            <td style="font-size:13px">
+              <div>{{ p.object_name }}</div>
+              <div class="text-muted">{{ p.stage_name }}</div>
+            </td>
+            {% if current_user.role != 'contractor' %}
+              <td style="font-size:13px">{{ p.contractor_name or '—' }}</td>
+            {% endif %}
+            <td>
+              {% if p.status == 'draft' %}<span class="badge badge-pending">Черновик</span>
+              {% elif p.status == 'in_review' %}<span class="badge badge-progress">На согласовании</span>
+              {% elif p.status == 'returned' %}<span class="badge badge-rework">Возвращён</span>
+              {% elif p.status == 'approved' %}<span class="badge badge-done">Согласован</span>
+              {% elif p.status == 'completed' %}<span class="badge badge-done">Завершён</span>
+              {% endif %}
+            </td>
+            <td class="text-muted" style="font-size:13px;white-space:nowrap">{{ p.created_at[:10] if p.created_at else '—' }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+{% endif %}
+{% endblock %}

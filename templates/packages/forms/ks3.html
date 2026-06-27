@@ -1,0 +1,164 @@
+{% extends "packages/forms/_base_form.html" %}
+
+{% set ed = existing_data or {} %}
+{% set inv = prefill.investor %}
+{% set con = prefill.contractor %}
+{% set obj = prefill.obj %}
+{% set stg = prefill.stage %}
+
+{% block form_header %}
+<div class="row g-3">
+  <div class="col-sm-3">
+    <label class="form-label">Справка №</label>
+    <input type="text" id="hDocNum" class="form-control" value="{{ ed.doc_number or '1' }}">
+  </div>
+  <div class="col-sm-3">
+    <label class="form-label">Дата справки</label>
+    <input type="date" id="hDocDate" class="form-control" value="{{ ed.doc_date or '' }}">
+  </div>
+  <div class="col-sm-3">
+    <label class="form-label">Период с</label>
+    <input type="date" id="hPeriodFrom" class="form-control" value="{{ ed.period_from or '' }}">
+  </div>
+  <div class="col-sm-3">
+    <label class="form-label">по</label>
+    <input type="date" id="hPeriodTo" class="form-control" value="{{ ed.period_to or '' }}">
+  </div>
+</div>
+
+<hr class="my-3"><h6 class="fw-bold mb-3" style="font-size:13px">Заказчик (Генподрядчик)</h6>
+<div class="row g-3">
+  <div class="col-sm-6"><label class="form-label">Название</label><input type="text" id="hCustName" class="form-control" value="{{ ed.customer_name or inv.name or '' }}"></div>
+  <div class="col-sm-3"><label class="form-label">ИНН</label><input type="text" id="hCustInn" class="form-control" value="{{ ed.customer_inn or inv.inn or '' }}"></div>
+  <div class="col-sm-3"><label class="form-label">КПП</label><input type="text" id="hCustKpp" class="form-control" value="{{ ed.customer_kpp or inv.kpp or '' }}"></div>
+  <div class="col-sm-6"><label class="form-label">Адрес</label><input type="text" id="hCustAddr" class="form-control" value="{{ ed.customer_address or inv.address or '' }}"></div>
+  <div class="col-sm-3"><label class="form-label">ОКПО</label><input type="text" id="hCustOkpo" class="form-control" value="{{ ed.customer_okpo or inv.okpo or '' }}"></div>
+</div>
+
+<hr class="my-3"><h6 class="fw-bold mb-3" style="font-size:13px">Подрядчик (Субподрядчик)</h6>
+<div class="row g-3">
+  <div class="col-sm-6"><label class="form-label">Название</label><input type="text" id="hConName" class="form-control" value="{{ ed.contractor_name or con.name or '' }}"></div>
+  <div class="col-sm-3"><label class="form-label">ИНН</label><input type="text" id="hConInn" class="form-control" value="{{ ed.contractor_inn or con.inn or '' }}"></div>
+  <div class="col-sm-3"><label class="form-label">КПП</label><input type="text" id="hConKpp" class="form-control" value="{{ ed.contractor_kpp or con.kpp or '' }}"></div>
+  <div class="col-sm-6"><label class="form-label">Адрес</label><input type="text" id="hConAddr" class="form-control" value="{{ ed.contractor_address or con.address or '' }}"></div>
+  <div class="col-sm-3"><label class="form-label">ОКПО</label><input type="text" id="hConOkpo" class="form-control" value="{{ ed.contractor_okpo or con.okpo or '' }}"></div>
+</div>
+
+<hr class="my-3"><h6 class="fw-bold mb-3" style="font-size:13px">Дополнительная информация</h6>
+<div class="row g-3">
+  <div class="col-sm-6"><label class="form-label">Стройка</label><input type="text" id="hConstruction" class="form-control" value="{{ ed.construction_name or obj.construction_name or obj.name or '' }}"></div>
+  <div class="col-sm-6"><label class="form-label">Адрес стройки</label><input type="text" id="hConsAddr" class="form-control" value="{{ ed.construction_address or obj.construction_address or '' }}"></div>
+  <div class="col-sm-3"><label class="form-label">Договор №</label><input type="text" id="hContractNum" class="form-control" value="{{ ed.contract_number or stg.contract_number or '' }}"></div>
+  <div class="col-sm-3"><label class="form-label">от</label><input type="date" id="hContractDate" class="form-control" value="{{ ed.contract_date or stg.contract_date or '' }}"></div>
+  <div class="col-sm-3"><label class="form-label">Сметная стоимость (₽)</label><input type="number" id="hSmetaCost" class="form-control" step="0.01" value="{{ ed.smeta_cost or stg.contract_amount or '' }}"></div>
+</div>
+
+<div class="alert alert-info mt-3 py-2 px-3" style="font-size:13px">
+  <i class="bi bi-info-circle me-1"></i>
+  Накопительная сумма по ранее завершённым КС-2 этого подрядчика на этом объекте: <strong>{{ '{:,.2f}'.format(prefill.cumulative_total).replace(',', ' ') }} ₽</strong>.
+  Значения «С начала» заполнены автоматически, можно скорректировать.
+</div>
+{% endblock %}
+
+{% block table_headers %}
+<th style="width:40px">№</th>
+<th style="width:60px">Код</th>
+<th>Наименование работ и затрат</th>
+<th style="width:130px">С начала работ (₽)</th>
+<th style="width:130px">С начала года (₽)</th>
+<th style="width:130px">За период (₽)</th>
+<th style="width:35px"></th>
+{% endblock %}
+
+{% block table_footer %}
+<tr style="border-top:2px solid var(--border)">
+  <td colspan="3" class="text-end fw-bold">Итого:</td>
+  <td class="fw-bold" id="calcCumulative">0.00</td>
+  <td class="fw-bold" id="calcYear">0.00</td>
+  <td class="fw-bold" id="calcTotal">0.00</td>
+  <td></td>
+</tr>
+{% endblock %}
+
+{% block row_template %}
+calc.qtyCol = 'period_amount';
+calc.priceCol = '__none__';
+calc.amountCol = '__none__';
+
+calc.rowTemplate = function(num, data) {
+  return '<td class="row-num">' + num + '</td>' +
+    '<td><input type="text" data-col="code" class="form-control form-control-sm" value="' + (data.code||'') + '" style="width:50px"></td>' +
+    '<td><input type="text" data-col="name" class="form-control form-control-sm" value="' + (data.name||'') + '"></td>' +
+    '<td><input type="number" data-col="cumulative" class="form-control form-control-sm" step="0.01" value="' + (data.cumulative||'') + '"></td>' +
+    '<td><input type="number" data-col="year_amount" class="form-control form-control-sm" step="0.01" value="' + (data.year_amount||'') + '"></td>' +
+    '<td><input type="number" data-col="period_amount" class="form-control form-control-sm" step="0.01" value="' + (data.period_amount||'') + '"></td>' +
+    '<td><button type="button" class="btn btn-sm btn-outline-danger py-0 px-1" onclick="calc.removeRow(this)"><i class="bi bi-x"></i></button></td>';
+};
+
+calc.calc = function() {
+  var rows = this.table.querySelectorAll('tbody tr');
+  var totC = 0, totY = 0, totP = 0;
+  rows.forEach(function(row) {
+    totC += parseFloat(row.querySelector('[data-col="cumulative"]')?.value) || 0;
+    totY += parseFloat(row.querySelector('[data-col="year_amount"]')?.value) || 0;
+    totP += parseFloat(row.querySelector('[data-col="period_amount"]')?.value) || 0;
+  });
+  var el;
+  el = document.getElementById('calcCumulative'); if(el) el.textContent = totC.toFixed(2);
+  el = document.getElementById('calcYear'); if(el) el.textContent = totY.toFixed(2);
+  el = document.getElementById('calcTotal'); if(el) el.textContent = totP.toFixed(2);
+  el = document.getElementById('calcTotalVat'); if(el) el.textContent = totP.toFixed(2);
+
+  var vatMode = document.getElementById('vatMode')?.value || 'none';
+  var vatRate = parseFloat(document.getElementById('vatRate')?.value) || 0;
+  var vat = 0, grand = totP;
+  if (vatMode === 'on_top') { vat = totP * vatRate / 100; grand = totP + vat; }
+  else if (vatMode === 'included') { vat = totP * vatRate / (100 + vatRate); }
+  el = document.getElementById('calcVat'); if(el) el.textContent = vat.toFixed(2);
+  el = document.getElementById('calcGrand'); if(el) el.textContent = grand.toFixed(2);
+};
+{% endblock %}
+
+{% block init_rows %}
+{% if existing_data and existing_data.items %}
+  {% for item in existing_data.items %}
+  calc.addRow({{ item|tojson }});
+  {% endfor %}
+{% elif prefill and prefill.substages %}
+  {# Авто-свод: позиции из подэтапов, period = total_price, cumulative = prev + period #}
+  {% set cum_prev = prefill.cumulative_total %}
+  {% set running_cum = [cum_prev] %}
+  {% for s in prefill.substages %}
+    {% if s.total_price %}
+      {% set period_val = s.total_price %}
+      {% set cum_val = running_cum[0] + period_val %}
+  calc.addRow({name: {{ s.name|tojson }}, period_amount: {{ period_val }}, cumulative: {{ cum_val }}, year_amount: {{ cum_val }}});
+      {% if running_cum.append(cum_val) %}{% endif %}
+      {% if running_cum.pop(0) is not none %}{% endif %}
+    {% endif %}
+  {% endfor %}
+{% endif %}
+if (calc.table.querySelectorAll('tbody tr').length === 0) calc.addRow();
+{% endblock %}
+
+{% block collect_data %}
+function gv(id) { var e = document.getElementById(id); return e ? e.value : ''; }
+function collectFormData() {
+  return {
+    title: 'КС-3 Справка №' + gv('hDocNum'),
+    doc_type: 'ks3',
+    doc_number: gv('hDocNum'), doc_date: gv('hDocDate'),
+    period_from: gv('hPeriodFrom'), period_to: gv('hPeriodTo'),
+    customer_name: gv('hCustName'), customer_inn: gv('hCustInn'), customer_kpp: gv('hCustKpp'),
+    customer_address: gv('hCustAddr'), customer_okpo: gv('hCustOkpo'),
+    contractor_name: gv('hConName'), contractor_inn: gv('hConInn'), contractor_kpp: gv('hConKpp'),
+    contractor_address: gv('hConAddr'), contractor_okpo: gv('hConOkpo'),
+    construction_name: gv('hConstruction'), construction_address: gv('hConsAddr'),
+    contract_number: gv('hContractNum'), contract_date: gv('hContractDate'),
+    smeta_cost: gv('hSmetaCost'),
+    items: calc.collectData(),
+    vat_mode: document.getElementById('vatMode').value,
+    vat_rate: document.getElementById('vatRate').value,
+  };
+}
+{% endblock %}

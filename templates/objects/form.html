@@ -16,9 +16,22 @@
             <label class="form-label">Адрес</label>
             <input type="text" name="address" class="form-control" value="{{ obj.address if obj else '' }}">
           </div>
-          <div class="mb-4">
+          <div class="mb-3">
             <label class="form-label">Тип объекта</label>
             <input type="text" name="type" class="form-control" value="{{ obj.type if obj else '' }}" placeholder="МКД, коттедж, коммерческая и т.д.">
+          </div>
+          <hr class="my-3"><h6 class="fw-bold mb-3" style="font-size:14px">Данные для документов</h6>
+          <div class="mb-3">
+            <label class="form-label">Наименование стройки</label>
+            <input type="text" name="construction_name" class="form-control" value="{{ obj.construction_name if obj and obj.construction_name else '' }}" placeholder="Строительство МКД по ул. …">
+          </div>
+          <div class="mb-3">
+            <label class="form-label">Адрес стройки (для КС)</label>
+            <input type="text" name="construction_address" class="form-control" value="{{ obj.construction_address if obj and obj.construction_address else '' }}">
+          </div>
+          <div class="mb-4">
+            <label class="form-label">Кадастровый номер</label>
+            <input type="text" name="cadastral_number" class="form-control" value="{{ obj.cadastral_number if obj and obj.cadastral_number else '' }}">
           </div>
           <div class="d-flex gap-2">
             <button type="submit" class="btn btn-primary"><i class="bi bi-check-lg me-1"></i>{{ 'Сохранить' if obj else 'Создать' }}</button>

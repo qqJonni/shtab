@@ -41,10 +41,41 @@
   </div>
 </div>
 
+{% if pc.pending > 0 or pc.in_review > 0 %}
+<h6 class="fw-bold mb-3">Согласования пакетов</h6>
+<div class="row g-3 mb-4">
+  {% if pc.pending > 0 %}
+  <div class="col-6 col-lg-3">
+    <a href="{{ url_for('packages_list') }}" class="text-decoration-none">
+      <div class="stat-card">
+        <div class="stat-card-icon" style="background:rgba(59,130,246,0.08);color:var(--primary)"><i class="bi bi-check2-square"></i></div>
+        <div><div class="stat-card-value">{{ pc.pending }}</div><div class="stat-card-label">На мне сейчас</div></div>
+      </div>
+    </a>
+  </div>
+  {% endif %}
+  <div class="col-6 col-lg-3">
+    <a href="{{ url_for('packages_list') }}" class="text-decoration-none">
+      <div class="stat-card">
+        <div class="stat-card-icon" style="background:rgba(245,158,11,0.08);color:var(--warning)"><i class="bi bi-hourglass-split"></i></div>
+        <div><div class="stat-card-value">{{ pc.in_review }}</div><div class="stat-card-label">На согласовании</div></div>
+      </div>
+    </a>
+  </div>
+  <div class="col-6 col-lg-3">
+    <a href="{{ url_for('packages_list') }}" class="text-decoration-none">
+      <div class="stat-card">
+        <div class="stat-card-icon" style="background:rgba(16,185,129,0.08);color:var(--success)"><i class="bi bi-check-circle"></i></div>
+        <div><div class="stat-card-value">{{ pc.completed }}</div><div class="stat-card-label">Завершённых</div></div>
+      </div>
+    </a>
+  </div>
+</div>
+{% endif %}
+
 <div class="row g-3">
   {% for s in [
     {'icon': 'bi-building', 'title': 'Объекты', 'text': 'Объекты и этапы строительства', 'url': url_for('objects_list')},
-    {'icon': 'bi-check2-square', 'title': 'Согласования', 'text': 'Маршрут согласования пакетов документов'},
     {'icon': 'bi-bar-chart-line', 'title': 'Отчёты', 'text': 'Сводные дашборды и аналитика'},
     {'icon': 'bi-file-earmark-excel', 'title': 'Экспорт', 'text': 'Выгрузка данных в Excel'},
   ] %}

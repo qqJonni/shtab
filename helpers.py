@@ -61,3 +61,8 @@ def save_substage_photo(file, substage_id):
 def save_defect_photo(file, defect_id):
     folder = os.path.join(config.DEFECTS_FOLDER, str(defect_id))
     return _save_file(file, folder, ALLOWED_IMG)
+
+
+def save_package_document(file, package_id):
+    folder = os.path.join(config.PACKAGES_FOLDER, str(package_id))
+    return _save_file(file, folder, ALLOWED_DOC | ALLOWED_IMG)
