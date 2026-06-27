@@ -111,6 +111,30 @@ calc.calc = function() {
 {% endif %}
 {% endblock %}
 
+{% block extra_scripts %}
+<button type="button" class="btn btn-sm btn-outline-primary mb-3" onclick="loadFromRequests()" style="margin-top:-1rem">
+  <i class="bi bi-box-seam me-1"></i>Загрузить позиции из заявок на материал
+</button>
+<script>
+function loadFromRequests() {
+  var stageId = {{ prefill.stage.id|default(0) }};
+  var contractorId = {{ prefill.contractor.id|default(0) }};
+  if (!stageId || !contractorId) { alert('Нет данных этапа/подрядчика'); return; }
+  fetch('/api/material-request-items/' + stageId + '/' + contractorId)
+    .then(r => r.json())
+    .then(data => {
+      if (!data.length) { alert('Нет одобренных заявок для этого этапа'); return; }
+      document.querySelector('#itemsTable tbody').innerHTML = '';
+      calc.rowCounter = 0;
+      data.forEach(item => {
+        calc.addRow({name: item.name, unit: item.unit || '', issued: item.issued || '0', beginning: '0', certified: '0'});
+      });
+      calc.calc();
+    });
+}
+</script>
+{% endblock %}
+
 {% block collect_data %}
 function gv(id) { var e = document.getElementById(id); return e ? e.value : ''; }
 function collectFormData() {

@@ -1,0 +1,190 @@
+{% extends "base.html" %}
+{% block title %}Заявка #{{ mr.id }} — ШТАБ{% endblock %}
+{% block topbar_title %}Заявка на материал #{{ mr.id }}{% endblock %}
+{% block content %}
+<div class="mb-3">
+  <a href="{{ url_for('supply_requests') }}" class="text-decoration-none" style="font-size:13px">
+    <i class="bi bi-arrow-left me-1"></i>Все заявки
+  </a>
+</div>
+
+<div class="d-flex justify-content-between align-items-start mb-3">
+  <div>
+    <h4 class="fw-bold mb-1">Заявка #{{ mr.id }}</h4>
+    <div class="text-muted" style="font-size:13px">{{ mr.object_name }} → {{ mr.stage_name }}{% if mr.substage_name %} → {{ mr.substage_name }}{% endif %}</div>
+  </div>
+  <div>
+    {% if mr.status == 'submitted' %}<span class="badge badge-progress" style="font-size:13px">Отправлена</span>
+    {% elif mr.status == 'returned' %}<span class="badge badge-rework" style="font-size:13px">Возвращена</span>
+    {% elif mr.status == 'approved' %}<span class="badge badge-done" style="font-size:13px">Одобрена</span>
+    {% elif mr.status == 'processing' %}<span class="badge badge-progress" style="font-size:13px">В обработке</span>
+    {% elif mr.status == 'completed' %}<span class="badge badge-done" style="font-size:13px">Завершена</span>
+    {% endif %}
+  </div>
+</div>
+
+{# Информация #}
+<div class="card mb-4">
+  <div class="card-body p-4">
+    <div class="row g-3">
+      <div class="col-sm-4">
+        <div class="text-muted" style="font-size:12px">Подрядчик</div>
+        <div style="font-size:14px">{{ mr.contractor_name or '—' }}</div>
+      </div>
+      <div class="col-sm-4">
+        <div class="text-muted" style="font-size:12px">Заявитель</div>
+        <div style="font-size:14px">{{ mr.requester_name or '—' }}</div>
+      </div>
+      <div class="col-sm-4">
+        <div class="text-muted" style="font-size:12px">Создана</div>
+        <div style="font-size:14px">{{ mr.created_at[:16] if mr.created_at else '—' }}</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+{# Позиции #}
+<h5 class="fw-bold mb-3">Позиции</h5>
+<div class="card mb-4">
+  <div class="table-responsive">
+    <table class="table table-hover mb-0">
+      <thead>
+        <tr>
+          <th style="width:40px">№</th>
+          <th>Материал</th>
+          <th>Ед.</th>
+          <th class="text-end">Кол-во</th>
+          <th class="text-end">Цена (₽)</th>
+          <th>Комментарий</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for item in items %}
+        <tr>
+          <td class="text-muted">{{ loop.index }}</td>
+          <td class="fw-medium">{{ item.material_name }}</td>
+          <td class="text-muted">{{ item.unit or '—' }}</td>
+          <td class="text-end">{{ '{:,.2f}'.format(item.quantity).replace(',', ' ') if item.quantity is not none else '—' }}</td>
+          <td class="text-end">{{ '{:,.2f}'.format(item.price).replace(',', ' ') if item.price is not none else '—' }}</td>
+          <td class="text-muted" style="font-size:13px">{{ item.comment or '' }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+{# Действия ПТО #}
+{% if current_user.role in ('pto', 'admin') and mr.status == 'submitted' and mr.current_role == 'pto' %}
+  <div class="card mb-4">
+    <div class="card-body p-4">
+      <h6 class="fw-bold mb-3">Проверка заявки</h6>
+      <div class="row g-3">
+        <div class="col-sm-6">
+          <form method="post" action="{{ url_for('supply_request_approve', req_id=mr.id) }}">
+            <div class="mb-2">
+              <textarea name="comment" class="form-control form-control-sm" rows="2" placeholder="Комментарий (необязательно)"></textarea>
+            </div>
+            <button class="btn btn-success w-100" onclick="return confirm('Одобрить заявку и передать снабженцу?')">
+              <i class="bi bi-check2-all me-1"></i>Одобрить
+            </button>
+          </form>
+        </div>
+        <div class="col-sm-6">
+          <form method="post" action="{{ url_for('supply_request_return', req_id=mr.id) }}">
+            <div class="mb-2">
+              <textarea name="comment" class="form-control form-control-sm" rows="2" placeholder="Причина возврата *" required></textarea>
+            </div>
+            <button class="btn btn-warning w-100">
+              <i class="bi bi-arrow-counterclockwise me-1"></i>Вернуть подрядчику
+            </button>
+          </form>
+        </div>
+      </div>
+    </div>
+  </div>
+{% endif %}
+
+{# Действия снабженца #}
+{% if current_user.role in ('supply', 'admin') and mr.status == 'approved' %}
+  <div class="card mb-4">
+    <div class="card-body p-4 text-center">
+      <form method="post" action="{{ url_for('supply_request_take', req_id=mr.id) }}">
+        <button class="btn btn-primary"><i class="bi bi-play-circle me-1"></i>Взять в обработку</button>
+      </form>
+    </div>
+  </div>
+{% endif %}
+
+{% if current_user.role in ('supply', 'admin') and mr.status == 'processing' %}
+  <div class="card mb-4">
+    <div class="card-body p-4">
+      <h6 class="fw-bold mb-3">Завершить обработку</h6>
+      <form method="post" action="{{ url_for('supply_request_complete', req_id=mr.id) }}">
+        <div class="mb-2">
+          <textarea name="comment" class="form-control form-control-sm" rows="2" placeholder="Комментарий (необязательно)"></textarea>
+        </div>
+        <button class="btn btn-success w-100" onclick="return confirm('Завершить заявку?')">
+          <i class="bi bi-check-circle me-1"></i>Материал выдан / завершить
+        </button>
+      </form>
+    </div>
+  </div>
+{% endif %}
+
+{# Возврат — подрядчик видит причину и может отправить повторно #}
+{% if is_own and mr.status == 'returned' %}
+  {% set last_return = None %}
+  {% for h in history %}
+    {% if h.action == 'returned' and not last_return %}{% set last_return = h %}{% endif %}
+  {% endfor %}
+  <div class="alert alert-danger d-flex align-items-start gap-3 mb-4" style="border-radius:var(--radius-card)">
+    <i class="bi bi-exclamation-triangle-fill" style="font-size:24px;margin-top:2px"></i>
+    <div>
+      <strong>Заявка возвращена ПТО</strong>
+      {% if last_return and last_return.comment %}
+        <div class="mt-1" style="font-size:14px">{{ last_return.comment }}</div>
+      {% endif %}
+      <div class="mt-2">
+        <form method="post" action="{{ url_for('supply_request_resubmit', req_id=mr.id) }}" class="d-inline">
+          <button class="btn btn-primary btn-sm"><i class="bi bi-send me-1"></i>Отправить повторно</button>
+        </form>
+      </div>
+    </div>
+  </div>
+{% endif %}
+
+{# История #}
+<h5 class="fw-bold mb-3">История</h5>
+{% if not history %}
+  <div class="card">
+    <div class="card-body text-center py-4 text-muted">Нет записей.</div>
+  </div>
+{% else %}
+  <div class="card">
+    <div class="list-group list-group-flush">
+      {% for h in history %}
+      <div class="list-group-item py-3 px-4">
+        <div class="d-flex justify-content-between align-items-center mb-1">
+          <strong style="font-size:13px">{{ h.user_name or '—' }}</strong>
+          <small class="text-muted">{{ h.created_at[:16] if h.created_at else '' }}</small>
+        </div>
+        <div style="font-size:13px">
+          {% if h.action == 'created' %}<span class="badge badge-progress">Создана</span>
+          {% elif h.action == 'returned' %}<span class="badge badge-rework">Возвращена</span>
+          {% elif h.action == 'resubmitted' %}<span class="badge badge-progress">Повторно отправлена</span>
+          {% elif h.action == 'approved' %}<span class="badge badge-done">Одобрена</span>
+          {% elif h.action == 'processing' %}<span class="badge badge-progress">Взята в обработку</span>
+          {% elif h.action == 'completed' %}<span class="badge badge-done">Завершена</span>
+          {% else %}<span class="badge badge-pending">{{ h.action }}</span>
+          {% endif %}
+          {% if h.comment %}
+            <div class="mt-1 text-muted" style="font-size:13px">{{ h.comment }}</div>
+          {% endif %}
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+{% endif %}
+{% endblock %}

@@ -1,0 +1,72 @@
+{% extends "base.html" %}
+{% block title %}Заявки на материал — ШТАБ{% endblock %}
+{% block topbar_title %}Заявки на материал{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h4 class="fw-bold mb-0">Заявки на материал</h4>
+  {% if current_user.role == 'contractor' %}
+    <a href="{{ url_for('supply_request_add') }}" class="btn btn-primary"><i class="bi bi-plus-lg me-1"></i>Новая заявка</a>
+  {% endif %}
+</div>
+
+<div class="d-flex gap-2 flex-wrap mb-3">
+  <span class="btn btn-sm btn-outline-secondary disabled">
+    Все <span class="badge bg-light text-dark ms-1">{{ counts.values()|sum }}</span>
+  </span>
+  {% for st, label in status_labels.items() %}
+    {% if counts[st] > 0 %}
+      <span class="btn btn-sm btn-outline-secondary disabled">
+        {{ label }} <span class="badge bg-light text-dark ms-1">{{ counts[st] }}</span>
+      </span>
+    {% endif %}
+  {% endfor %}
+</div>
+
+{% if not reqs %}
+  <div class="card">
+    <div class="card-body text-center py-5 text-muted">
+      <i class="bi bi-box-seam" style="font-size:48px;opacity:.3"></i>
+      <p class="mt-3 mb-0">Заявок пока нет.</p>
+    </div>
+  </div>
+{% else %}
+  <div class="card">
+    <div class="table-responsive">
+      <table class="table table-hover mb-0">
+        <thead>
+          <tr>
+            <th style="width:40px">#</th>
+            <th>Объект / Этап</th>
+            {% if current_user.role != 'contractor' %}<th>Подрядчик</th>{% endif %}
+            <th>Статус</th>
+            <th>Дата</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for r in reqs %}
+          <tr>
+            <td class="text-muted">{{ r.id }}</td>
+            <td>
+              <a href="{{ url_for('supply_request_detail', req_id=r.id) }}" class="fw-medium text-decoration-none" style="color:var(--text-main)">{{ r.object_name }}</a>
+              <div class="text-muted" style="font-size:12px">{{ r.stage_name }}</div>
+            </td>
+            {% if current_user.role != 'contractor' %}
+              <td style="font-size:13px">{{ r.contractor_name or '—' }}</td>
+            {% endif %}
+            <td>
+              {% if r.status == 'submitted' %}<span class="badge badge-progress">Отправлена</span>
+              {% elif r.status == 'returned' %}<span class="badge badge-rework">Возвращена</span>
+              {% elif r.status == 'approved' %}<span class="badge badge-done">Одобрена</span>
+              {% elif r.status == 'processing' %}<span class="badge badge-progress">В обработке</span>
+              {% elif r.status == 'completed' %}<span class="badge badge-done">Завершена</span>
+              {% endif %}
+            </td>
+            <td class="text-muted" style="font-size:13px;white-space:nowrap">{{ r.created_at[:10] if r.created_at else '—' }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+{% endif %}
+{% endblock %}

@@ -122,10 +122,23 @@
 </div>
 {% endif %}
 
+{% if mr_pending > 0 %}
+<h6 class="fw-bold mb-3 mt-4">Заявки на материал</h6>
+<div class="row g-3 mb-4">
+  <div class="col-6 col-lg-4">
+    <a href="{{ url_for('supply_requests') }}" class="text-decoration-none">
+      <div class="stat-card">
+        <div class="stat-card-icon" style="background:rgba(245,158,11,0.08);color:var(--warning)"><i class="bi bi-box-seam"></i></div>
+        <div><div class="stat-card-value">{{ mr_pending }}</div><div class="stat-card-label">На проверке</div></div>
+      </div>
+    </a>
+  </div>
+</div>
+{% endif %}
+
 {# Заглушки #}
 <div class="row g-3 mt-4">
   {% for s in [
-    {'icon': 'bi-box-seam', 'title': 'Заявки на материал', 'text': 'Проверка заявок на давальческий материал'},
     {'icon': 'bi-exclamation-triangle', 'title': 'Замечания', 'text': 'Просмотр и контроль замечаний'},
   ] %}
   <div class="col-sm-6 col-lg-4">

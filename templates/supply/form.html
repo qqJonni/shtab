@@ -1,0 +1,117 @@
+{% extends "base.html" %}
+{% block title %}Новая заявка — ШТАБ{% endblock %}
+{% block topbar_title %}Новая заявка на материал{% endblock %}
+{% block content %}
+<div class="row justify-content-center">
+  <div class="col-lg-9">
+    <div class="card mb-4">
+      <div class="card-body p-4">
+        <h5 class="fw-bold mb-4">Новая заявка на давальческий материал</h5>
+        <form method="post" id="supplyForm">
+          <div class="row g-3 mb-4">
+            <div class="col-sm-6">
+              <label class="form-label">Этап *</label>
+              <select name="stage_id" id="selStage" class="form-select" required>
+                <option value="">Выберите этап</option>
+                {% for s in stages %}
+                  <option value="{{ s.id }}">{{ s.object_name }} → {{ s.name }}</option>
+                {% endfor %}
+              </select>
+            </div>
+            <div class="col-sm-6">
+              <label class="form-label">Подэтап (необязательно)</label>
+              <select name="substage_id" id="selSubstage" class="form-select">
+                <option value="">— не привязан —</option>
+              </select>
+            </div>
+          </div>
+
+          <h6 class="fw-bold mb-3">Позиции</h6>
+          <div class="table-responsive mb-3">
+            <table class="table table-hover mb-0" id="itemsTable">
+              <thead>
+                <tr>
+                  <th style="width:35px">№</th>
+                  <th>Наименование материала</th>
+                  <th style="width:90px">Ед.</th>
+                  <th style="width:100px">Кол-во</th>
+                  <th style="width:110px">Цена (₽)</th>
+                  <th>Комментарий</th>
+                  <th style="width:35px"></th>
+                </tr>
+              </thead>
+              <tbody id="itemsBody">
+              </tbody>
+            </table>
+          </div>
+          <button type="button" class="btn btn-sm btn-outline-primary mb-4" onclick="addRow()"><i class="bi bi-plus-lg me-1"></i>Добавить строку</button>
+
+          <div class="d-flex gap-2">
+            <button type="submit" class="btn btn-success"><i class="bi bi-send me-1"></i>Отправить заявку</button>
+            <a href="{{ url_for('supply_requests') }}" class="btn btn-outline-secondary">Отмена</a>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+var rowCount = 0;
+function addRow(data) {
+  data = data || {};
+  rowCount++;
+  var tbody = document.getElementById('itemsBody');
+  var tr = document.createElement('tr');
+  tr.innerHTML =
+    '<td class="row-num">' + rowCount + '</td>' +
+    '<td><input type="text" name="item_name[]" class="form-control form-control-sm" value="' + (data.name||'') + '" required></td>' +
+    '<td><select name="item_unit[]" class="form-select form-select-sm"><option value="">—</option>' +
+      {% for u in UNITS %}'<option value="{{ u }}"' + (data.unit === {{ u|tojson }} ? ' selected' : '') + '>{{ u }}</option>' + {% endfor %}
+    '</select></td>' +
+    '<td><input type="number" name="item_qty[]" class="form-control form-control-sm" step="0.01" min="0" value="' + (data.qty||'') + '"></td>' +
+    '<td><input type="number" name="item_price[]" class="form-control form-control-sm" step="0.01" min="0" value="' + (data.price||'') + '"></td>' +
+    '<td><input type="text" name="item_comment[]" class="form-control form-control-sm" value="' + (data.comment||'') + '"></td>' +
+    '<td><button type="button" class="btn btn-sm btn-outline-danger py-0 px-1" onclick="removeRow(this)"><i class="bi bi-x"></i></button></td>';
+  tbody.appendChild(tr);
+}
+function removeRow(btn) {
+  btn.closest('tr').remove();
+  renumber();
+}
+function renumber() {
+  var rows = document.querySelectorAll('#itemsBody tr');
+  rows.forEach(function(r, i) { r.querySelector('.row-num').textContent = i + 1; });
+  rowCount = rows.length;
+}
+
+// Cascade: stage → substages
+document.getElementById('selStage').addEventListener('change', function() {
+  var subSel = document.getElementById('selSubstage');
+  subSel.innerHTML = '<option value="">— не привязан —</option>';
+  if (!this.value) return;
+  fetch('/api/substages-by-stage/' + this.value)
+    .then(r => r.json())
+    .then(data => {
+      data.forEach(s => { subSel.innerHTML += '<option value="'+s.id+'">'+s.name+'</option>'; });
+    });
+  // Prefill items from stage substages
+  if (document.querySelectorAll('#itemsBody tr').length <= 1) {
+    fetch('/api/stage-materials/' + this.value)
+      .then(r => r.json())
+      .then(data => {
+        document.getElementById('itemsBody').innerHTML = '';
+        rowCount = 0;
+        data.forEach(s => {
+          if (s.name) addRow({name: s.name, unit: s.unit || '', qty: s.volume || ''});
+        });
+        if (rowCount === 0) addRow();
+      });
+  }
+});
+
+addRow();
+</script>
+{% endblock %}

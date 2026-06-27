@@ -151,13 +151,15 @@ def register(app):
             substages_in_progress += s['sub_in_progress']
             substages_done += s['sub_done']
         pc = _package_counts('pto')
+        mr_pending = query_db("SELECT COUNT(*) as c FROM material_requests WHERE status='submitted' AND current_role='pto'", one=True)['c']
         import config
         return render_template('dashboards/pto.html',
                                stages=stages_list, stages_no_subs=stages_no_subs,
                                total_substages=total_substages,
                                substages_in_progress=substages_in_progress,
                                substages_done=substages_done,
-                               role_label=config.ROLES.get('pto'), pc=pc)
+                               role_label=config.ROLES.get('pto'), pc=pc,
+                               mr_pending=mr_pending)
 
     @app.route('/dashboard/inspector')
     @login_required
@@ -199,7 +201,16 @@ def register(app):
     @app.route('/dashboard/supply')
     @login_required
     def dashboard_supply():
-        return _render('supply')
+        if current_user.role != 'supply' and current_user.role != 'admin':
+            abort(403)
+        from db import query_db
+        approved = query_db("SELECT COUNT(*) as c FROM material_requests WHERE status='approved'", one=True)['c']
+        processing = query_db("SELECT COUNT(*) as c FROM material_requests WHERE status='processing'", one=True)['c']
+        completed = query_db("SELECT COUNT(*) as c FROM material_requests WHERE status='completed'", one=True)['c']
+        import config
+        return render_template('dashboards/supply.html',
+                               role_label=config.ROLES.get('supply'),
+                               approved=approved, processing=processing, completed=completed)
 
     @app.route('/dashboard/accountant')
     @login_required
@@ -256,13 +267,18 @@ def register(app):
                                 (org_id,), one=True)['c']
         pkg_completed = query_db("SELECT COUNT(*) as c FROM doc_packages WHERE contractor_id=? AND status='completed'",
                                  (org_id,), one=True)['c']
+        mr_active = query_db("SELECT COUNT(*) as c FROM material_requests WHERE contractor_id=? AND status IN ('submitted','approved','processing')",
+                             (org_id,), one=True)['c']
+        mr_returned = query_db("SELECT COUNT(*) as c FROM material_requests WHERE contractor_id=? AND status='returned'",
+                               (org_id,), one=True)['c']
         import config
         return render_template('dashboards/contractor.html',
                                stages=stages_list, role_label=config.ROLES.get('contractor'),
                                defect_open=defect_open, defect_in_progress=defect_in_progress,
                                defect_overdue=defect_overdue,
                                pkg_in_review=pkg_in_review, pkg_returned=pkg_returned,
-                               pkg_completed=pkg_completed)
+                               pkg_completed=pkg_completed,
+                               mr_active=mr_active, mr_returned=mr_returned)
 
     @app.route('/dashboard/guest')
     @login_required

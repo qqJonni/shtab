@@ -94,13 +94,14 @@ def create_app():
 
 
 def register_routes(app):
-    from routes import auth, notifications, dashboards, objects, defects, packages
+    from routes import auth, notifications, dashboards, objects, defects, packages, supply
     auth.register(app)
     notifications.register(app)
     dashboards.register(app)
     objects.register(app)
     defects.register(app)
     packages.register(app)
+    supply.register(app)
 
 
 def init_db():
@@ -282,6 +283,38 @@ def init_db():
             action TEXT NOT NULL,
             old_value TEXT,
             new_value TEXT,
+            comment TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+
+        CREATE TABLE IF NOT EXISTS material_requests (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            stage_id INTEGER NOT NULL REFERENCES construction_stages(id),
+            substage_id INTEGER REFERENCES substages(id),
+            contractor_id INTEGER REFERENCES organizations(id),
+            requested_by INTEGER NOT NULL REFERENCES users(id),
+            status TEXT NOT NULL DEFAULT 'submitted' CHECK(status IN ('submitted', 'returned', 'approved', 'processing', 'completed')),
+            current_role TEXT NOT NULL DEFAULT 'pto' CHECK(current_role IN ('pto', 'supply')),
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            completed_at TIMESTAMP
+        );
+
+        CREATE TABLE IF NOT EXISTS material_request_items (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            request_id INTEGER NOT NULL REFERENCES material_requests(id) ON DELETE CASCADE,
+            material_name TEXT NOT NULL,
+            unit TEXT,
+            quantity REAL,
+            price REAL,
+            comment TEXT
+        );
+
+        CREATE TABLE IF NOT EXISTS material_request_history (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            request_id INTEGER NOT NULL REFERENCES material_requests(id) ON DELETE CASCADE,
+            user_id INTEGER NOT NULL REFERENCES users(id),
+            action TEXT NOT NULL,
             comment TEXT,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         );
