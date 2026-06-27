@@ -62,6 +62,18 @@ ROLE_SECTIONS = {
 }
 
 
+def _defect_counts_all():
+    from db import query_db
+    return {
+        'total': query_db("SELECT COUNT(*) as c FROM defects", one=True)['c'],
+        'open': query_db("SELECT COUNT(*) as c FROM defects WHERE status='open'", one=True)['c'],
+        'in_progress': query_db("SELECT COUNT(*) as c FROM defects WHERE status='in_progress'", one=True)['c'],
+        'resolved': query_db("SELECT COUNT(*) as c FROM defects WHERE status='resolved'", one=True)['c'],
+        'closed': query_db("SELECT COUNT(*) as c FROM defects WHERE status IN ('closed','verified')", one=True)['c'],
+        'overdue': query_db("SELECT COUNT(*) as c FROM defects WHERE due_date < date('now') AND status NOT IN ('closed','verified')", one=True)['c'],
+    }
+
+
 def register(app):
 
     @app.route('/dashboard')
@@ -73,12 +85,24 @@ def register(app):
     @app.route('/dashboard/admin')
     @login_required
     def dashboard_admin():
-        return _render('admin')
+        if current_user.role != 'admin':
+            abort(403)
+        from db import query_db
+        dc = _defect_counts_all()
+        import config
+        return render_template('dashboards/admin.html',
+                               role_label=config.ROLES.get('admin'), dc=dc)
 
     @app.route('/dashboard/manager')
     @login_required
     def dashboard_manager():
-        return _render('manager')
+        if current_user.role != 'manager' and current_user.role != 'admin':
+            abort(403)
+        from db import query_db
+        dc = _defect_counts_all()
+        import config
+        return render_template('dashboards/manager.html',
+                               role_label=config.ROLES.get('manager'), dc=dc)
 
     @app.route('/dashboard/pto')
     @login_required
@@ -118,12 +142,37 @@ def register(app):
     @app.route('/dashboard/inspector')
     @login_required
     def dashboard_inspector():
-        return _render('inspector')
+        if current_user.role != 'inspector' and current_user.role != 'admin':
+            abort(403)
+        from db import query_db
+        open_cnt = query_db("SELECT COUNT(*) as c FROM defects WHERE status='open'", one=True)['c']
+        resolved_cnt = query_db("SELECT COUNT(*) as c FROM defects WHERE status='resolved'", one=True)['c']
+        my_created = query_db("SELECT COUNT(*) as c FROM defects WHERE reporter_id=?",
+                              (current_user.id,), one=True)['c']
+        overdue = query_db(
+            "SELECT COUNT(*) as c FROM defects WHERE due_date < date('now') AND status NOT IN ('closed','verified')",
+            one=True)['c']
+        import config
+        return render_template('dashboards/inspector.html',
+                               role_label=config.ROLES.get('inspector'),
+                               open_cnt=open_cnt, resolved_cnt=resolved_cnt,
+                               my_created=my_created, overdue=overdue)
 
     @app.route('/dashboard/foreman')
     @login_required
     def dashboard_foreman():
-        return _render('foreman')
+        if current_user.role != 'foreman' and current_user.role != 'admin':
+            abort(403)
+        from db import query_db
+        open_cnt = query_db("SELECT COUNT(*) as c FROM defects WHERE status='open'", one=True)['c']
+        my_created = query_db("SELECT COUNT(*) as c FROM defects WHERE reporter_id=?",
+                              (current_user.id,), one=True)['c']
+        in_progress = query_db("SELECT COUNT(*) as c FROM defects WHERE status='in_progress'", one=True)['c']
+        import config
+        return render_template('dashboards/foreman.html',
+                               role_label=config.ROLES.get('foreman'),
+                               open_cnt=open_cnt, my_created=my_created,
+                               in_progress=in_progress)
 
     @app.route('/dashboard/supply')
     @login_required
@@ -154,9 +203,20 @@ def register(app):
             subs = query_db('SELECT status FROM substages WHERE stage_id = ?', (s['id'],))
             s['sub_total'] = len(subs)
             s['sub_done'] = sum(1 for sub in subs if sub['status'] == 'done')
+        # Defect counts for contractor
+        org_id = current_user.organization_id
+        defect_open = query_db("SELECT COUNT(*) as c FROM defects WHERE contractor_id=? AND status IN ('open','rejected')",
+                               (org_id,), one=True)['c']
+        defect_in_progress = query_db("SELECT COUNT(*) as c FROM defects WHERE contractor_id=? AND status='in_progress'",
+                                      (org_id,), one=True)['c']
+        defect_overdue = query_db(
+            "SELECT COUNT(*) as c FROM defects WHERE contractor_id=? AND due_date < date('now') AND status NOT IN ('closed','verified')",
+            (org_id,), one=True)['c']
         import config
         return render_template('dashboards/contractor.html',
-                               stages=stages_list, role_label=config.ROLES.get('contractor'))
+                               stages=stages_list, role_label=config.ROLES.get('contractor'),
+                               defect_open=defect_open, defect_in_progress=defect_in_progress,
+                               defect_overdue=defect_overdue)
 
     @app.route('/dashboard/guest')
     @login_required

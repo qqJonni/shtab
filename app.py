@@ -77,6 +77,11 @@ def create_app():
             return {'unread_count': row['cnt'] if row else 0}
         return {'unread_count': 0}
 
+    @app.context_processor
+    def inject_now_date():
+        from datetime import date
+        return {'now_date': date.today().isoformat()}
+
     @app.errorhandler(403)
     def forbidden(e):
         return render_template('errors/403.html'), 403
@@ -89,11 +94,12 @@ def create_app():
 
 
 def register_routes(app):
-    from routes import auth, notifications, dashboards, objects
+    from routes import auth, notifications, dashboards, objects, defects
     auth.register(app)
     notifications.register(app)
     dashboards.register(app)
     objects.register(app)
+    defects.register(app)
 
 
 def init_db():
@@ -198,6 +204,53 @@ def init_db():
             uploaded_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         );
 
+        CREATE TABLE IF NOT EXISTS defect_types (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL,
+            order_num INTEGER NOT NULL DEFAULT 0
+        );
+
+        CREATE TABLE IF NOT EXISTS defects (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            object_id INTEGER NOT NULL REFERENCES objects(id),
+            stage_id INTEGER NOT NULL REFERENCES construction_stages(id),
+            substage_id INTEGER REFERENCES substages(id),
+            title TEXT NOT NULL,
+            description TEXT,
+            type_id INTEGER REFERENCES defect_types(id),
+            priority TEXT NOT NULL DEFAULT 'normal' CHECK(priority IN ('low', 'normal', 'high', 'critical')),
+            status TEXT NOT NULL DEFAULT 'open' CHECK(status IN ('open', 'in_progress', 'resolved', 'verified', 'rejected', 'closed')),
+            reporter_id INTEGER NOT NULL REFERENCES users(id),
+            responsible_id INTEGER REFERENCES users(id),
+            contractor_id INTEGER REFERENCES organizations(id),
+            due_date DATE,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            resolved_at TIMESTAMP,
+            verified_at TIMESTAMP,
+            reopen_count INTEGER NOT NULL DEFAULT 0
+        );
+
+        CREATE TABLE IF NOT EXISTS defect_photos (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            defect_id INTEGER NOT NULL REFERENCES defects(id) ON DELETE CASCADE,
+            filename TEXT NOT NULL,
+            photo_type TEXT NOT NULL DEFAULT 'general' CHECK(photo_type IN ('before', 'after', 'general')),
+            uploaded_by INTEGER REFERENCES users(id),
+            uploaded_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+
+        CREATE TABLE IF NOT EXISTS defect_history (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            defect_id INTEGER NOT NULL REFERENCES defects(id) ON DELETE CASCADE,
+            user_id INTEGER NOT NULL REFERENCES users(id),
+            action TEXT NOT NULL,
+            old_value TEXT,
+            new_value TEXT,
+            comment TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+
         CREATE TABLE IF NOT EXISTS guest_tokens (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             object_id INTEGER,
@@ -246,6 +299,13 @@ def _seed(db):
     contractor_id = db.execute("SELECT id FROM users WHERE username='contractor'").fetchone()[0]
     inspector_id = db.execute("SELECT id FROM users WHERE username='inspector'").fetchone()[0]
 
+    defect_types = [
+        'Отделка', 'Электрика', 'Сантехника', 'Окна/двери',
+        'Стены/потолки', 'Полы', 'Кровля', 'Фасад', 'Прочее',
+    ]
+    for i, dt in enumerate(defect_types, 1):
+        db.execute('INSERT INTO defect_types (name, order_num) VALUES (?, ?)', (dt, i))
+
     test_notifications = [
         (manager_id, 'system', 'Добро пожаловать в ШТАБ', 'Система готова к работе. Создайте первый объект.', '/dashboard'),
         (manager_id, 'approval', 'Новый пакет на согласование', 'Подрядчик «СтройМонтаж» отправил пакет документов по подэтапу «Монолитные работы».', '/dashboard'),
@@ -265,7 +325,7 @@ def run_migrations(db):
     pass
 
 
-for folder in (config.UPLOAD_FOLDER, config.DOCS_FOLDER, config.AVATARS_FOLDER):
+for folder in (config.UPLOAD_FOLDER, config.DOCS_FOLDER, config.AVATARS_FOLDER, config.DEFECTS_FOLDER):
     os.makedirs(folder, exist_ok=True)
 
 app = create_app()

@@ -29,7 +29,7 @@
     {'label': 'Объекты',       'icon': 'bi-building',      'url': url_for('objects_list')},
     {'section': 'Контроль'},
     {'label': 'Согласования',  'icon': 'bi-check2-square', 'url': url_for('dashboard')},
-    {'label': 'Замечания',     'icon': 'bi-exclamation-triangle', 'url': url_for('dashboard')},
+    {'label': 'Замечания',     'icon': 'bi-exclamation-triangle', 'url': url_for('defects_list')},
     {'section': 'Отчётность'},
     {'label': 'Отчёты',        'icon': 'bi-bar-chart-line','url': url_for('dashboard')},
     {'label': 'Экспорт',       'icon': 'bi-file-earmark-excel', 'url': url_for('dashboard')},
@@ -46,14 +46,14 @@
     {'label': 'Подэтапы',      'icon': 'bi-list-check',    'url': url_for('objects_list')},
     {'label': 'Согласования',  'icon': 'bi-check2-square', 'url': url_for('dashboard')},
     {'label': 'Заявки на материал','icon': 'bi-box-seam',  'url': url_for('dashboard')},
-    {'label': 'Замечания',     'icon': 'bi-exclamation-triangle', 'url': url_for('dashboard')},
+    {'label': 'Замечания',     'icon': 'bi-exclamation-triangle', 'url': url_for('defects_list')},
   ],
   'inspector': [
     {'section': 'Основное'},
     {'label': 'Дашборд',       'icon': 'bi-speedometer2',  'url': url_for('dashboard')},
     {'label': 'Объекты',       'icon': 'bi-building',      'url': url_for('objects_list')},
     {'section': 'Работа'},
-    {'label': 'Замечания',     'icon': 'bi-exclamation-triangle', 'url': url_for('dashboard')},
+    {'label': 'Замечания',     'icon': 'bi-exclamation-triangle', 'url': url_for('defects_list')},
     {'label': 'Согласования',  'icon': 'bi-check2-square', 'url': url_for('dashboard')},
   ],
   'foreman': [
@@ -61,7 +61,7 @@
     {'label': 'Дашборд',       'icon': 'bi-speedometer2',  'url': url_for('dashboard')},
     {'label': 'Объекты',       'icon': 'bi-building',      'url': url_for('objects_list')},
     {'section': 'Работа'},
-    {'label': 'Замечания',     'icon': 'bi-exclamation-triangle', 'url': url_for('dashboard')},
+    {'label': 'Замечания',     'icon': 'bi-exclamation-triangle', 'url': url_for('defects_list')},
     {'label': 'Согласования',  'icon': 'bi-check2-square', 'url': url_for('dashboard')},
   ],
   'supply': [
@@ -82,7 +82,7 @@
     {'label': 'Мои этапы',     'icon': 'bi-kanban',        'url': url_for('my_stages')},
     {'section': 'Документы'},
     {'label': 'Закрытие работ','icon': 'bi-file-earmark-check', 'url': url_for('dashboard')},
-    {'label': 'Замечания',     'icon': 'bi-exclamation-triangle', 'url': url_for('dashboard')},
+    {'label': 'Замечания',     'icon': 'bi-exclamation-triangle', 'url': url_for('defects_list')},
     {'label': 'Заявки на материал','icon': 'bi-box-seam',  'url': url_for('dashboard')},
   ],
   'guest': [

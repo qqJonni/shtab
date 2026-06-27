@@ -6,6 +6,7 @@ __pycache__/
 static/uploads/
 static/docs/
 static/avatars/
+static/defects/
 backups/
 *.egg-info/
 dist/

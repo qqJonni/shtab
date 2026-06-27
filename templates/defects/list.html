@@ -1,0 +1,144 @@
+{% extends "base.html" %}
+{% block title %}Замечания — ШТАБ{% endblock %}
+{% block topbar_title %}Замечания{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h4 class="fw-bold mb-0">Замечания</h4>
+  {% if current_user.role in ('inspector', 'foreman', 'admin') %}
+    <a href="{{ url_for('defect_add') }}" class="btn btn-primary"><i class="bi bi-plus-lg me-1"></i>Новое замечание</a>
+  {% endif %}
+</div>
+
+{# Счётчики по статусам #}
+<div class="d-flex gap-2 flex-wrap mb-3">
+  <a href="{{ url_for('defects_list') }}" class="btn btn-sm {% if not f_status %}btn-primary{% else %}btn-outline-secondary{% endif %}">
+    Все <span class="badge bg-light text-dark ms-1">{{ counts.values()|sum }}</span>
+  </a>
+  {% for st, label in status_labels.items() %}
+    {% if counts[st] > 0 %}
+    <a href="{{ url_for('defects_list', status=st, object_id=f_object, priority=f_priority, type_id=f_type) }}"
+       class="btn btn-sm {% if f_status == st %}btn-primary{% else %}btn-outline-secondary{% endif %}">
+      {{ label }} <span class="badge bg-light text-dark ms-1">{{ counts[st] }}</span>
+    </a>
+    {% endif %}
+  {% endfor %}
+  <a href="{{ url_for('defects_list', overdue='1') }}" class="btn btn-sm {% if f_overdue %}btn-danger{% else %}btn-outline-danger{% endif %}">
+    <i class="bi bi-clock me-1"></i>Просроченные
+  </a>
+</div>
+
+{# Фильтры #}
+<div class="card mb-3">
+  <div class="card-body p-3">
+    <form method="get" class="row g-2 align-items-end">
+      <div class="col-sm-3">
+        <label class="form-label">Объект</label>
+        <select name="object_id" class="form-select form-select-sm">
+          <option value="">Все</option>
+          {% for o in objects %}
+            <option value="{{ o.id }}" {% if f_object|string == o.id|string %}selected{% endif %}>{{ o.name }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="col-sm-2">
+        <label class="form-label">Приоритет</label>
+        <select name="priority" class="form-select form-select-sm">
+          <option value="">Все</option>
+          {% for k, v in priority_labels.items() %}
+            <option value="{{ k }}" {% if f_priority == k %}selected{% endif %}>{{ v }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="col-sm-2">
+        <label class="form-label">Тип</label>
+        <select name="type_id" class="form-select form-select-sm">
+          <option value="">Все</option>
+          {% for t in types %}
+            <option value="{{ t.id }}" {% if f_type|string == t.id|string %}selected{% endif %}>{{ t.name }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="col-sm-2">
+        <label class="form-label">Статус</label>
+        <select name="status" class="form-select form-select-sm">
+          <option value="">Все</option>
+          {% for k, v in status_labels.items() %}
+            <option value="{{ k }}" {% if f_status == k %}selected{% endif %}>{{ v }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="col-sm-3 d-flex gap-2">
+        <button type="submit" class="btn btn-sm btn-outline-primary flex-grow-1">Применить</button>
+        <a href="{{ url_for('defects_list') }}" class="btn btn-sm btn-outline-secondary">Сбросить</a>
+      </div>
+    </form>
+  </div>
+</div>
+
+{# Таблица #}
+{% if not defects %}
+  <div class="card">
+    <div class="card-body text-center py-5 text-muted">
+      <i class="bi bi-exclamation-triangle" style="font-size:48px;opacity:.3"></i>
+      <p class="mt-3 mb-0">Замечаний не найдено.</p>
+    </div>
+  </div>
+{% else %}
+  <div class="card">
+    <div class="table-responsive">
+      <table class="table table-hover mb-0">
+        <thead>
+          <tr>
+            <th style="width:40px">#</th>
+            <th>Замечание</th>
+            <th>Объект / Этап</th>
+            <th>Тип</th>
+            <th>Приоритет</th>
+            <th>Срок</th>
+            <th>Статус</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for d in defects %}
+          <tr>
+            <td class="text-muted">{{ d.id }}</td>
+            <td>
+              <a href="{{ url_for('defect_detail', defect_id=d.id) }}" class="fw-medium text-decoration-none" style="color:var(--text-main)">{{ d.title }}</a>
+              {% if d.reporter_name %}
+                <div class="text-muted" style="font-size:11px">{{ d.reporter_name }}</div>
+              {% endif %}
+            </td>
+            <td style="font-size:13px">
+              <div>{{ d.object_name }}</div>
+              <div class="text-muted">{{ d.stage_name }}</div>
+            </td>
+            <td><span class="badge" style="background:#F1F5F9;color:#475569">{{ d.type_name or '—' }}</span></td>
+            <td>
+              {% if d.priority == 'critical' %}<span class="badge badge-overdue">Критический</span>
+              {% elif d.priority == 'high' %}<span class="badge badge-rework">Высокий</span>
+              {% elif d.priority == 'normal' %}<span class="badge badge-progress">Обычный</span>
+              {% else %}<span class="badge badge-pending">Низкий</span>
+              {% endif %}
+            </td>
+            <td style="font-size:13px;white-space:nowrap">
+              {% if d.due_date %}
+                <span {% if d.due_date < now_date and d.status not in ('closed', 'verified') %}style="color:var(--danger);font-weight:600"{% endif %}>{{ d.due_date }}</span>
+              {% else %}—{% endif %}
+            </td>
+            <td>
+              {% if d.status == 'open' %}<span class="badge badge-overdue">Открыто</span>
+              {% elif d.status == 'in_progress' %}<span class="badge badge-progress">В работе</span>
+              {% elif d.status == 'resolved' %}<span class="badge badge-rework">Устранено</span>
+              {% elif d.status == 'verified' %}<span class="badge badge-done">Проверено</span>
+              {% elif d.status == 'rejected' %}<span class="badge badge-overdue">Отклонено</span>
+              {% elif d.status == 'closed' %}<span class="badge badge-done">Закрыто</span>
+              {% endif %}
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+{% endif %}
+{% endblock %}

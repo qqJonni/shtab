@@ -1,0 +1,272 @@
+{% extends "base.html" %}
+{% block title %}{{ d.title }} — ШТАБ{% endblock %}
+{% block topbar_title %}Замечание #{{ d.id }}{% endblock %}
+{% block content %}
+<div class="mb-3">
+  <a href="{{ url_for('defects_list') }}" class="text-decoration-none" style="font-size:13px">
+    <i class="bi bi-arrow-left me-1"></i>Все замечания
+  </a>
+</div>
+
+<div class="d-flex justify-content-between align-items-start mb-3">
+  <div>
+    <h4 class="fw-bold mb-1">{{ d.title }}</h4>
+    <div class="text-muted" style="font-size:13px">
+      {{ d.object_name }} → {{ d.stage_name }}{% if d.substage_name %} → {{ d.substage_name }}{% endif %}
+    </div>
+  </div>
+  <div class="d-flex gap-2">
+    {% if d.status == 'open' %}<span class="badge badge-overdue" style="font-size:13px">Открыто</span>
+    {% elif d.status == 'in_progress' %}<span class="badge badge-progress" style="font-size:13px">В работе</span>
+    {% elif d.status == 'resolved' %}<span class="badge badge-rework" style="font-size:13px">Устранено</span>
+    {% elif d.status == 'verified' %}<span class="badge badge-done" style="font-size:13px">Проверено</span>
+    {% elif d.status == 'rejected' %}<span class="badge badge-overdue" style="font-size:13px">Отклонено</span>
+    {% elif d.status == 'closed' %}<span class="badge badge-done" style="font-size:13px">Закрыто</span>
+    {% endif %}
+  </div>
+</div>
+
+{# Информация #}
+<div class="row g-3 mb-4">
+  <div class="col-lg-8">
+    <div class="card h-100">
+      <div class="card-body p-4">
+        {% if d.description %}
+          <div class="mb-3">
+            <div class="text-muted" style="font-size:12px">Описание</div>
+            <div style="font-size:14px;white-space:pre-line">{{ d.description }}</div>
+          </div>
+        {% endif %}
+        <div class="row g-3">
+          <div class="col-sm-4">
+            <div class="text-muted" style="font-size:12px">Тип</div>
+            <span class="badge" style="background:#F1F5F9;color:#475569">{{ d.type_name or '—' }}</span>
+          </div>
+          <div class="col-sm-4">
+            <div class="text-muted" style="font-size:12px">Приоритет</div>
+            {% if d.priority == 'critical' %}<span class="badge badge-overdue">Критический</span>
+            {% elif d.priority == 'high' %}<span class="badge badge-rework">Высокий</span>
+            {% elif d.priority == 'normal' %}<span class="badge badge-progress">Обычный</span>
+            {% else %}<span class="badge badge-pending">Низкий</span>
+            {% endif %}
+          </div>
+          <div class="col-sm-4">
+            <div class="text-muted" style="font-size:12px">Срок</div>
+            <div style="font-size:14px">
+              {% if d.due_date %}
+                <span {% if d.due_date < now_date and d.status not in ('closed','verified') %}style="color:var(--danger);font-weight:600"{% endif %}>{{ d.due_date }}</span>
+              {% else %}—{% endif %}
+            </div>
+          </div>
+          <div class="col-sm-4">
+            <div class="text-muted" style="font-size:12px">Автор</div>
+            <div style="font-size:14px">{{ d.reporter_name or '—' }}</div>
+          </div>
+          <div class="col-sm-4">
+            <div class="text-muted" style="font-size:12px">Подрядчик</div>
+            <div style="font-size:14px">{{ d.contractor_name or '—' }}</div>
+          </div>
+          <div class="col-sm-4">
+            <div class="text-muted" style="font-size:12px">Создано</div>
+            <div style="font-size:14px">{{ d.created_at[:16] if d.created_at else '—' }}</div>
+          </div>
+          {% if d.reopen_count > 0 %}
+          <div class="col-sm-4">
+            <div class="text-muted" style="font-size:12px">Возвраты</div>
+            <div style="font-size:14px;color:var(--danger);font-weight:600">{{ d.reopen_count }}</div>
+          </div>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="col-lg-4">
+    <div class="card h-100">
+      <div class="card-body p-4">
+        <div class="text-muted mb-3" style="font-size:12px">Действия</div>
+
+        {# Contractor: взять в работу #}
+        {% if d.status in ('open', 'rejected') and current_user.role == 'contractor' and d.contractor_id == current_user.organization_id %}
+          <form method="post" action="{{ url_for('defect_take', defect_id=d.id) }}" class="mb-2">
+            <button class="btn btn-primary w-100"><i class="bi bi-play-circle me-1"></i>Взять в работу</button>
+          </form>
+        {% endif %}
+
+        {# Contractor: отметить устранённым #}
+        {% if d.status == 'in_progress' and current_user.role == 'contractor' and d.contractor_id == current_user.organization_id %}
+          <form method="post" action="{{ url_for('defect_resolve', defect_id=d.id) }}" enctype="multipart/form-data" class="mb-2">
+            <div class="mb-2">
+              <label class="form-label" style="font-size:12px">Фото «после» *</label>
+              <input type="file" name="photos_after" class="form-control form-control-sm" accept="image/*" multiple required>
+            </div>
+            <div class="mb-2">
+              <label class="form-label" style="font-size:12px">Комментарий</label>
+              <textarea name="comment" class="form-control form-control-sm" rows="2" placeholder="Что сделано…"></textarea>
+            </div>
+            <button class="btn btn-success w-100"><i class="bi bi-check-circle me-1"></i>Отметить устранённым</button>
+          </form>
+        {% endif %}
+
+        {# Reviewer: принять / вернуть / отклонить #}
+        {% set is_reviewer = current_user.role in ('inspector', 'admin') or current_user.id == d.reporter_id %}
+        {% if d.status == 'resolved' and is_reviewer %}
+          <form method="post" action="{{ url_for('defect_verify', defect_id=d.id) }}" class="mb-2">
+            <button class="btn btn-success w-100" onclick="return confirm('Принять замечание и закрыть?')"><i class="bi bi-check2-all me-1"></i>Принять и закрыть</button>
+          </form>
+          <form method="post" action="{{ url_for('defect_reopen', defect_id=d.id) }}" class="mb-2">
+            <div class="mb-2">
+              <input type="text" name="reason" class="form-control form-control-sm" placeholder="Причина возврата *" required>
+            </div>
+            <button class="btn btn-warning w-100"><i class="bi bi-arrow-counterclockwise me-1"></i>Вернуть подрядчику</button>
+          </form>
+        {% endif %}
+
+        {% if d.status not in ('closed', 'rejected') and is_reviewer %}
+          <form method="post" action="{{ url_for('defect_reject', defect_id=d.id) }}" class="mb-2">
+            <div class="mb-2">
+              <input type="text" name="reason" class="form-control form-control-sm" placeholder="Причина отклонения *" required>
+            </div>
+            <button class="btn btn-outline-danger w-100 btn-sm"><i class="bi bi-x-circle me-1"></i>Отклонить</button>
+          </form>
+        {% endif %}
+
+        <hr style="border-color:var(--border)">
+        {# Комментарий — любой с доступом #}
+        <form method="post" action="{{ url_for('defect_comment', defect_id=d.id) }}">
+          <div class="mb-2">
+            <textarea name="comment" class="form-control form-control-sm" rows="2" placeholder="Комментарий…" required></textarea>
+          </div>
+          <button class="btn btn-outline-secondary w-100 btn-sm"><i class="bi bi-chat-dots me-1"></i>Комментарий</button>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+
+{# ═══ Фото ═══ #}
+{% if photos_before or photos_after %}
+<div class="row g-3 mb-4">
+  {% if photos_before %}
+  <div class="{% if photos_after %}col-lg-6{% else %}col-12{% endif %}">
+    <h6 class="fw-bold mb-2"><i class="bi bi-camera me-1"></i>Фото «до»</h6>
+    <div class="row g-2">
+      {% for p in photos_before %}
+      <div class="col-4 col-sm-3">
+        <div class="photo-thumb-wrap">
+          <img src="{{ url_for('static', filename='defects/' + d.id|string + '/' + p.filename) }}"
+               class="gallery-img" data-bs-toggle="modal" data-bs-target="#galleryModal"
+               onclick="openGallery({{ loop.index0 }}, 'before')">
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+  {% endif %}
+  {% if photos_after %}
+  <div class="{% if photos_before %}col-lg-6{% else %}col-12{% endif %}">
+    <h6 class="fw-bold mb-2"><i class="bi bi-camera-fill me-1"></i>Фото «после»</h6>
+    <div class="row g-2">
+      {% for p in photos_after %}
+      <div class="col-4 col-sm-3">
+        <div class="photo-thumb-wrap">
+          <img src="{{ url_for('static', filename='defects/' + d.id|string + '/' + p.filename) }}"
+               class="gallery-img" data-bs-toggle="modal" data-bs-target="#galleryModal"
+               onclick="openGallery({{ loop.index0 }}, 'after')">
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+  {% endif %}
+</div>
+
+{# Модалка галереи #}
+<div class="modal fade" id="galleryModal" tabindex="-1">
+  <div class="modal-dialog modal-lg modal-dialog-centered">
+    <div class="modal-content" style="background:rgba(0,0,0,0.95);border:none">
+      <div class="modal-header border-0 pb-0">
+        <span class="text-white" id="galleryCounter" style="font-size:13px"></span>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body text-center p-2">
+        <img id="galleryImg" src="" style="max-width:100%;max-height:75vh;border-radius:8px">
+      </div>
+      <div class="modal-footer border-0 justify-content-center pt-0">
+        <button class="btn btn-outline-light btn-sm" onclick="galleryPrev()"><i class="bi bi-chevron-left"></i></button>
+        <button class="btn btn-outline-light btn-sm" onclick="galleryNext()"><i class="bi bi-chevron-right"></i></button>
+      </div>
+    </div>
+  </div>
+</div>
+{% endif %}
+
+{# ═══ История ═══ #}
+<h5 class="fw-bold mb-3">История</h5>
+{% if not history %}
+  <div class="card">
+    <div class="card-body text-center py-4 text-muted">Нет записей.</div>
+  </div>
+{% else %}
+  <div class="card">
+    <div class="list-group list-group-flush">
+      {% for h in history %}
+      <div class="list-group-item py-3 px-4">
+        <div class="d-flex justify-content-between align-items-center mb-1">
+          <strong style="font-size:13px">{{ h.user_name or '—' }}</strong>
+          <small class="text-muted">{{ h.created_at[:16] if h.created_at else '' }}</small>
+        </div>
+        <div style="font-size:13px">
+          {% if h.action == 'created' %}
+            <span class="badge badge-progress">Создано</span> {{ h.new_value or '' }}
+          {% elif h.action == 'status_change' %}
+            <span class="badge badge-pending">Статус</span> {{ h.old_value or '' }} → {{ h.new_value or '' }}
+          {% elif h.action == 'resolved' %}
+            <span class="badge badge-rework">Устранено</span>
+          {% elif h.action == 'verified' %}
+            <span class="badge badge-done">Проверено</span>
+          {% elif h.action == 'closed' %}
+            <span class="badge badge-done">Закрыто</span>
+          {% elif h.action == 'reopened' %}
+            <span class="badge badge-overdue">Возвращено</span>
+          {% else %}
+            <span class="badge badge-pending">{{ h.action }}</span>
+          {% endif %}
+          {% if h.comment %}
+            <div class="mt-1 text-muted" style="font-size:13px;white-space:pre-line">{{ h.comment }}</div>
+          {% endif %}
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+{% if photos_all %}
+<script>
+var photosBefore = {{ photos_before|tojson }};
+var photosAfter = {{ photos_after|tojson }};
+var defectId = {{ d.id }};
+var currentSet = [];
+var galleryIdx = 0;
+function openGallery(idx, type) {
+  currentSet = type === 'after' ? photosAfter : photosBefore;
+  galleryIdx = idx;
+  showPhoto();
+}
+function showPhoto() {
+  var p = currentSet[galleryIdx];
+  document.getElementById('galleryImg').src = '/static/defects/' + defectId + '/' + p.filename;
+  document.getElementById('galleryCounter').textContent = (galleryIdx+1) + ' / ' + currentSet.length;
+}
+function galleryNext() { galleryIdx = (galleryIdx+1) % currentSet.length; showPhoto(); }
+function galleryPrev() { galleryIdx = (galleryIdx-1+currentSet.length) % currentSet.length; showPhoto(); }
+document.addEventListener('keydown', function(e) {
+  if (!document.getElementById('galleryModal').classList.contains('show')) return;
+  if (e.key === 'ArrowRight') galleryNext();
+  if (e.key === 'ArrowLeft') galleryPrev();
+});
+</script>
+{% endif %}
+{% endblock %}
