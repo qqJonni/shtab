@@ -1,0 +1,60 @@
+{% extends "base.html" %}
+{% block title %}Мои этапы — ШТАБ{% endblock %}
+{% block topbar_title %}Мои этапы{% endblock %}
+{% block content %}
+<h4 class="fw-bold mb-3">Мои этапы</h4>
+
+{% if not stages %}
+  <div class="card">
+    <div class="card-body text-center py-5 text-muted">
+      <i class="bi bi-kanban" style="font-size:48px;opacity:.3"></i>
+      <p class="mt-3 mb-0">Вам пока не назначены этапы.</p>
+    </div>
+  </div>
+{% else %}
+  <div class="card">
+    <div class="table-responsive">
+      <table class="table table-hover mb-0">
+        <thead>
+          <tr>
+            <th>Объект</th>
+            <th>#</th>
+            <th>Этап</th>
+            <th>Сроки</th>
+            <th>Статус</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for s in stages %}
+          <tr>
+            <td>
+              <div class="fw-medium" style="font-size:13px">{{ s.object_name }}</div>
+              {% if s.object_address %}
+                <div class="text-muted" style="font-size:11px">{{ s.object_address }}</div>
+              {% endif %}
+            </td>
+            <td class="text-muted">{{ s.order_num }}</td>
+            <td>
+              <a href="{{ url_for('stage_detail', stage_id=s.id) }}" class="fw-medium text-decoration-none" style="color:var(--primary)">{{ s.name }}</a>
+            </td>
+            <td style="font-size:13px;white-space:nowrap">
+              {% if s.plan_start_date %}{{ s.plan_start_date }}{% endif %}
+              {% if s.plan_start_date and s.plan_end_date %} — {% endif %}
+              {% if s.plan_end_date %}{{ s.plan_end_date }}{% endif %}
+              {% if not s.plan_start_date and not s.plan_end_date %}—{% endif %}
+            </td>
+            <td>
+              {% if s.status == 'planned' %}<span class="badge badge-pending">Планируется</span>
+              {% elif s.status == 'in_progress' %}<span class="badge badge-progress">В работе</span>
+              {% elif s.status == 'done' %}<span class="badge badge-done">Завершён</span>
+              {% elif s.status == 'suspended' %}<span class="badge badge-rework">Приостановлен</span>
+              {% endif %}
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+{% endif %}
+{% endblock %}

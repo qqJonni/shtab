@@ -108,7 +108,20 @@ def register(app):
     @app.route('/dashboard/contractor')
     @login_required
     def dashboard_contractor():
-        return _render('contractor')
+        if current_user.role != 'contractor' and current_user.role != 'admin':
+            abort(403)
+        from db import query_db
+        stages = query_db(
+            'SELECT cs.*, o.name as object_name '
+            'FROM construction_stages cs '
+            'JOIN objects o ON cs.object_id = o.id '
+            'WHERE cs.contractor_id = ? '
+            'ORDER BY cs.status, o.name, cs.order_num',
+            (current_user.organization_id,),
+        )
+        import config
+        return render_template('dashboards/contractor.html',
+                               stages=stages, role_label=config.ROLES.get('contractor'))
 
     @app.route('/dashboard/guest')
     @login_required

@@ -1,0 +1,162 @@
+{% extends "base.html" %}
+{% block title %}{{ obj.name }} — ШТАБ{% endblock %}
+{% block topbar_title %}{{ obj.name }}{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <div>
+    <h4 class="fw-bold mb-1">{{ obj.name }}</h4>
+    {% if obj.address %}
+      <p class="text-muted mb-0" style="font-size:13px"><i class="bi bi-geo-alt me-1"></i>{{ obj.address }}</p>
+    {% endif %}
+  </div>
+  <div class="d-flex gap-2">
+    {% if current_user.role in ('manager', 'admin') %}
+      <a href="{{ url_for('object_edit', obj_id=obj.id) }}" class="btn btn-sm btn-outline-primary"><i class="bi bi-pencil me-1"></i>Редактировать</a>
+      <form method="post" action="{{ url_for('object_archive', obj_id=obj.id) }}" class="d-inline">
+        {% if obj.status == 'active' %}
+          <button class="btn btn-sm btn-outline-secondary" onclick="return confirm('Архивировать объект?')"><i class="bi bi-archive me-1"></i>В архив</button>
+        {% else %}
+          <button class="btn btn-sm btn-outline-success"><i class="bi bi-arrow-counterclockwise me-1"></i>Восстановить</button>
+        {% endif %}
+      </form>
+    {% endif %}
+  </div>
+</div>
+
+{# Информация об объекте #}
+<div class="row g-3 mb-4">
+  <div class="col-lg-8">
+    <div class="card">
+      <div class="card-body p-4">
+        <div class="row g-3">
+          <div class="col-sm-4">
+            <div class="text-muted" style="font-size:12px">Статус</div>
+            {% if obj.status == 'active' %}
+              <span class="badge badge-done">Активный</span>
+            {% else %}
+              <span class="badge badge-pending">Архив</span>
+            {% endif %}
+          </div>
+          {% if obj.type %}
+          <div class="col-sm-4">
+            <div class="text-muted" style="font-size:12px">Тип</div>
+            <div class="fw-medium" style="font-size:14px">{{ obj.type }}</div>
+          </div>
+          {% endif %}
+          <div class="col-sm-4">
+            <div class="text-muted" style="font-size:12px">Создан</div>
+            <div style="font-size:14px">{{ obj.created_at[:10] if obj.created_at else '—' }}</div>
+          </div>
+          {% if obj.creator_name %}
+          <div class="col-sm-4">
+            <div class="text-muted" style="font-size:12px">Автор</div>
+            <div style="font-size:14px">{{ obj.creator_name }}</div>
+          </div>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="col-lg-4">
+    <div class="card h-100">
+      <div class="card-body p-4 text-center">
+        <div class="stat-card-value">{{ stages|length }}</div>
+        <div class="stat-card-label">{{ 'этап' if stages|length == 1 else 'этапов' }}</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+{# ═══ Этапы строительства ═══ #}
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h5 class="fw-bold mb-0">Этапы строительства</h5>
+  {% if current_user.role in ('manager', 'admin') %}
+    <a href="{{ url_for('stage_add', obj_id=obj.id) }}" class="btn btn-sm btn-primary"><i class="bi bi-plus-lg me-1"></i>Добавить этап</a>
+  {% endif %}
+</div>
+
+{% if not stages %}
+  <div class="card">
+    <div class="card-body text-center py-5 text-muted">
+      <i class="bi bi-layers" style="font-size:48px;opacity:.3"></i>
+      <p class="mt-3 mb-0">Этапы пока не добавлены.</p>
+    </div>
+  </div>
+{% else %}
+  <div class="card">
+    <div class="table-responsive">
+      <table class="table table-hover mb-0">
+        <thead>
+          <tr>
+            <th style="width:50px">#</th>
+            <th>Название</th>
+            <th>Подрядчик</th>
+            <th>Сроки</th>
+            <th>Статус</th>
+            {% if current_user.role in ('manager', 'admin') %}
+              <th style="width:140px" class="text-end">Действия</th>
+            {% endif %}
+          </tr>
+        </thead>
+        <tbody>
+          {% for s in stages %}
+          <tr>
+            <td class="text-muted">{{ s.order_num }}</td>
+            <td>
+              <a href="{{ url_for('stage_detail', stage_id=s.id) }}" class="fw-medium text-decoration-none" style="color:var(--text-main)">{{ s.name }}</a>
+              {% if s.description %}
+                <div class="text-muted" style="font-size:12px">{{ s.description[:80] }}{% if s.description|length > 80 %}…{% endif %}</div>
+              {% endif %}
+            </td>
+            <td>
+              {% if s.contractor_name %}
+                {% if current_user.role in ('manager', 'admin') %}
+                  <a href="{{ url_for('stage_contractor', stage_id=s.id) }}" class="text-decoration-none"><span class="badge badge-done">{{ s.contractor_name }} <i class="bi bi-pencil" style="font-size:9px"></i></span></a>
+                {% else %}
+                  <span class="badge badge-done">{{ s.contractor_name }}</span>
+                {% endif %}
+              {% else %}
+                {% if current_user.role in ('manager', 'admin') %}
+                  <a href="{{ url_for('stage_contractor', stage_id=s.id) }}" class="text-decoration-none"><span class="badge badge-rework">Поиск <i class="bi bi-plus-circle" style="font-size:9px"></i></span></a>
+                {% else %}
+                  <span class="badge badge-rework">Поиск</span>
+                {% endif %}
+              {% endif %}
+            </td>
+            <td style="font-size:13px;white-space:nowrap">
+              {% if s.plan_start_date %}{{ s.plan_start_date }}{% endif %}
+              {% if s.plan_start_date and s.plan_end_date %} — {% endif %}
+              {% if s.plan_end_date %}{{ s.plan_end_date }}{% endif %}
+              {% if not s.plan_start_date and not s.plan_end_date %}—{% endif %}
+            </td>
+            <td>
+              {% if s.status == 'planned' %}<span class="badge badge-pending">Планируется</span>
+              {% elif s.status == 'in_progress' %}<span class="badge badge-progress">В работе</span>
+              {% elif s.status == 'done' %}<span class="badge badge-done">Завершён</span>
+              {% elif s.status == 'suspended' %}<span class="badge badge-rework">Приостановлен</span>
+              {% endif %}
+            </td>
+            {% if current_user.role in ('manager', 'admin') %}
+            <td class="text-end">
+              <div class="d-inline-flex gap-1">
+                <form method="post" action="{{ url_for('stage_move', stage_id=s.id, direction='up') }}" class="d-inline">
+                  <button class="btn btn-sm btn-outline-secondary py-0 px-1" title="Вверх"{% if loop.first %} disabled{% endif %}><i class="bi bi-chevron-up"></i></button>
+                </form>
+                <form method="post" action="{{ url_for('stage_move', stage_id=s.id, direction='down') }}" class="d-inline">
+                  <button class="btn btn-sm btn-outline-secondary py-0 px-1" title="Вниз"{% if loop.last %} disabled{% endif %}><i class="bi bi-chevron-down"></i></button>
+                </form>
+                <a href="{{ url_for('stage_edit', stage_id=s.id) }}" class="btn btn-sm btn-outline-primary py-0 px-1" title="Редактировать"><i class="bi bi-pencil"></i></a>
+                <form method="post" action="{{ url_for('stage_delete', stage_id=s.id) }}" class="d-inline" onsubmit="return confirm('Удалить этап «{{ s.name }}»?')">
+                  <button class="btn btn-sm btn-outline-danger py-0 px-1" title="Удалить"><i class="bi bi-trash"></i></button>
+                </form>
+              </div>
+            </td>
+            {% endif %}
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+{% endif %}
+{% endblock %}

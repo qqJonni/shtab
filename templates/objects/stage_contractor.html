@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+{% block title %}Подрядчик — {{ stage.name }} — ШТАБ{% endblock %}
+{% block topbar_title %}{{ obj.name }} — Подрядчик этапа{% endblock %}
+{% block content %}
+<div class="row justify-content-center">
+  <div class="col-lg-5">
+    <div class="card">
+      <div class="card-body p-4">
+        <h5 class="fw-bold mb-1">Назначить подрядчика</h5>
+        <p class="text-muted mb-4" style="font-size:13px">Этап: {{ stage.name }}</p>
+
+        {% if stage.contractor_id %}
+          {% set current_org = None %}
+          {% for c in contractors %}
+            {% if c.id == stage.contractor_id %}{% set current_org = c %}{% endif %}
+          {% endfor %}
+          <div class="alert alert-info py-2 px-3 d-flex align-items-center gap-2 mb-3">
+            <i class="bi bi-building"></i>
+            <span>Текущий подрядчик: <strong>{% for c in contractors %}{% if c.id == stage.contractor_id %}{{ c.name }}{% endif %}{% endfor %}</strong></span>
+          </div>
+        {% endif %}
+
+        <form method="post">
+          <div class="mb-4">
+            <label class="form-label">Организация-подрядчик</label>
+            <select name="contractor_id" class="form-select">
+              <option value="">— Снять подрядчика —</option>
+              {% for c in contractors %}
+                <option value="{{ c.id }}" {% if stage.contractor_id == c.id %}selected{% endif %}>{{ c.name }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="d-flex gap-2">
+            <button type="submit" class="btn btn-primary"><i class="bi bi-check-lg me-1"></i>Сохранить</button>
+            <a href="{{ url_for('object_detail', obj_id=obj.id) }}" class="btn btn-outline-secondary">Отмена</a>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

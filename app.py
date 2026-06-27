@@ -89,10 +89,11 @@ def create_app():
 
 
 def register_routes(app):
-    from routes import auth, notifications, dashboards
+    from routes import auth, notifications, dashboards, objects
     auth.register(app)
     notifications.register(app)
     dashboards.register(app)
+    objects.register(app)
 
 
 def init_db():
@@ -136,6 +137,41 @@ def init_db():
             link TEXT,
             is_read INTEGER DEFAULT 0,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+
+        CREATE TABLE IF NOT EXISTS objects (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL,
+            address TEXT,
+            type TEXT,
+            status TEXT NOT NULL DEFAULT 'active' CHECK(status IN ('active', 'archived')),
+            created_by INTEGER REFERENCES users(id),
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+
+        CREATE TABLE IF NOT EXISTS construction_stages (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            object_id INTEGER NOT NULL REFERENCES objects(id) ON DELETE CASCADE,
+            name TEXT NOT NULL,
+            order_num INTEGER NOT NULL DEFAULT 0,
+            description TEXT,
+            contractor_id INTEGER REFERENCES organizations(id),
+            contractor_status TEXT NOT NULL DEFAULT 'search' CHECK(contractor_status IN ('search', 'assigned')),
+            plan_start_date DATE,
+            plan_end_date DATE,
+            status TEXT NOT NULL DEFAULT 'planned' CHECK(status IN ('planned', 'in_progress', 'done', 'suspended')),
+            created_by INTEGER REFERENCES users(id),
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+
+        CREATE TABLE IF NOT EXISTS stage_documents (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            stage_id INTEGER NOT NULL REFERENCES construction_stages(id) ON DELETE CASCADE,
+            doc_type TEXT NOT NULL DEFAULT 'other' CHECK(doc_type IN ('contract', 'tech_spec', 'work_schedule', 'other')),
+            title TEXT NOT NULL,
+            filename TEXT NOT NULL,
+            uploaded_by INTEGER REFERENCES users(id),
+            uploaded_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         );
 
         CREATE TABLE IF NOT EXISTS guest_tokens (

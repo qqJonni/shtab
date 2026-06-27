@@ -1,0 +1,61 @@
+{% extends "base.html" %}
+{% block title %}Объекты — ШТАБ{% endblock %}
+{% block topbar_title %}Объекты{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h4 class="fw-bold mb-0">Объекты</h4>
+  {% if current_user.role in ('manager', 'admin') %}
+    <a href="{{ url_for('object_add') }}" class="btn btn-primary"><i class="bi bi-plus-lg me-1"></i>Новый объект</a>
+  {% endif %}
+</div>
+
+<div class="d-flex gap-2 mb-3">
+  <a href="{{ url_for('objects_list', status='active') }}" class="btn btn-sm {% if status == 'active' %}btn-primary{% else %}btn-outline-secondary{% endif %}">Активные</a>
+  <a href="{{ url_for('objects_list', status='archived') }}" class="btn btn-sm {% if status == 'archived' %}btn-primary{% else %}btn-outline-secondary{% endif %}">Архив</a>
+</div>
+
+{% if not objects %}
+  <div class="card">
+    <div class="card-body text-center py-5 text-muted">
+      <i class="bi bi-building" style="font-size:48px;opacity:.3"></i>
+      <p class="mt-3 mb-0">{% if status == 'archived' %}Нет архивных объектов{% else %}Нет объектов. Создайте первый!{% endif %}</p>
+    </div>
+  </div>
+{% else %}
+  <div class="row g-3">
+    {% for obj in objects %}
+    <div class="col-sm-6 col-lg-4">
+      <a href="{{ url_for('object_detail', obj_id=obj.id) }}" class="text-decoration-none">
+        <div class="card card-hover h-100">
+          <div class="card-body p-4">
+            <div class="d-flex align-items-center gap-3 mb-3">
+              <div class="stat-card-icon" style="background:rgba(59,130,246,0.08);color:var(--primary)">
+                <i class="bi bi-building"></i>
+              </div>
+              <div class="flex-grow-1 min-width-0">
+                <div class="fw-semibold text-truncate" style="font-size:15px;color:var(--text-main)">{{ obj.name }}</div>
+                {% if obj.address %}
+                  <div class="text-muted text-truncate" style="font-size:12px">{{ obj.address }}</div>
+                {% endif %}
+              </div>
+            </div>
+            <div class="d-flex justify-content-between align-items-center">
+              {% if obj.type %}
+                <span class="text-muted" style="font-size:12px">{{ obj.type }}</span>
+              {% else %}
+                <span></span>
+              {% endif %}
+              {% if obj.status == 'active' %}
+                <span class="badge badge-done">Активный</span>
+              {% else %}
+                <span class="badge badge-pending">Архив</span>
+              {% endif %}
+            </div>
+          </div>
+        </div>
+      </a>
+    </div>
+    {% endfor %}
+  </div>
+{% endif %}
+{% endblock %}
