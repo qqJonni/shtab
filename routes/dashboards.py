@@ -1,4 +1,4 @@
-from flask import render_template, redirect, url_for
+from flask import render_template, redirect, url_for, abort
 from flask_login import login_required, current_user
 
 ROLE_DASHBOARDS = {
@@ -117,6 +117,8 @@ def register(app):
 
 
 def _render(role):
+    if current_user.role != role and current_user.role != 'admin':
+        abort(403)
     import config
     sections = ROLE_SECTIONS.get(role, [])
     role_label = config.ROLES.get(role, role)
