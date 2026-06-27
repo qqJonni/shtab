@@ -49,6 +49,86 @@
   </div>
 </div>
 
+{# ═══ Состав работ (подэтапы) ═══ #}
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h5 class="fw-bold mb-0">Состав работ (ценовой документ)</h5>
+  {% if current_user.role in ('pto', 'manager', 'admin') %}
+    <a href="{{ url_for('substage_add', stage_id=stage.id) }}" class="btn btn-sm btn-primary"><i class="bi bi-plus-lg me-1"></i>Добавить работу</a>
+  {% endif %}
+</div>
+
+{% if not substages %}
+  <div class="card mb-4">
+    <div class="card-body text-center py-5 text-muted">
+      <i class="bi bi-list-check" style="font-size:48px;opacity:.3"></i>
+      <p class="mt-3 mb-0">Подэтапы пока не добавлены.</p>
+    </div>
+  </div>
+{% else %}
+  <div class="card mb-4">
+    <div class="table-responsive">
+      <table class="table table-hover mb-0">
+        <thead>
+          <tr>
+            <th>Название</th>
+            <th class="text-end">Объём</th>
+            <th>Ед.</th>
+            <th class="text-end">Расценка</th>
+            <th class="text-end">Сумма</th>
+            <th>Срок</th>
+            <th>Статус</th>
+            {% if current_user.role in ('pto', 'manager', 'admin') %}
+              <th class="text-end" style="width:80px">Действия</th>
+            {% endif %}
+          </tr>
+        </thead>
+        <tbody>
+          {% for s in substages %}
+          <tr>
+            <td>
+              <a href="{{ url_for('substage_detail', sub_id=s.id) }}" class="fw-medium text-decoration-none" style="color:var(--text-main)">{{ s.name }}</a>
+              {% if s.description %}
+                <div class="text-muted" style="font-size:12px">{{ s.description[:60] }}{% if s.description|length > 60 %}…{% endif %}</div>
+              {% endif %}
+            </td>
+            <td class="text-end">{{ '{:,.2f}'.format(s.volume).replace(',', ' ') if s.volume is not none else '—' }}</td>
+            <td class="text-muted">{{ s.unit or '—' }}</td>
+            <td class="text-end">{{ '{:,.2f}'.format(s.unit_price).replace(',', ' ') if s.unit_price is not none else '—' }}</td>
+            <td class="text-end fw-medium">{{ '{:,.2f}'.format(s.total_price).replace(',', ' ') if s.total_price is not none else '—' }}</td>
+            <td style="font-size:13px;white-space:nowrap">{{ s.plan_end_date or '—' }}</td>
+            <td>
+              {% if s.status == 'not_started' %}<span class="badge badge-pending">Не начат</span>
+              {% elif s.status == 'in_progress' %}<span class="badge badge-progress">В работе</span>
+              {% elif s.status == 'done' %}<span class="badge badge-done">Выполнен</span>
+              {% elif s.status == 'closed' %}<span class="badge badge-rework">Закрыт</span>
+              {% elif s.status == 'approved' %}<span class="badge badge-done">Согласован</span>
+              {% endif %}
+            </td>
+            {% if current_user.role in ('pto', 'manager', 'admin') %}
+            <td class="text-end">
+              <div class="d-inline-flex gap-1">
+                <a href="{{ url_for('substage_edit', sub_id=s.id) }}" class="btn btn-sm btn-outline-primary py-0 px-1" title="Редактировать"><i class="bi bi-pencil"></i></a>
+                <form method="post" action="{{ url_for('substage_delete', sub_id=s.id) }}" class="d-inline" onsubmit="return confirm('Удалить подэтап «{{ s.name }}»?')">
+                  <button class="btn btn-sm btn-outline-danger py-0 px-1" title="Удалить"><i class="bi bi-trash"></i></button>
+                </form>
+              </div>
+            </td>
+            {% endif %}
+          </tr>
+          {% endfor %}
+        </tbody>
+        <tfoot>
+          <tr style="border-top:2px solid var(--border)">
+            <td colspan="4" class="text-end fw-bold" style="font-size:13px">Итого по этапу:</td>
+            <td class="text-end fw-bold" style="font-size:15px;color:var(--primary)">{{ '{:,.2f}'.format(total_sum).replace(',', ' ') }} ₽</td>
+            <td colspan="{% if current_user.role in ('pto', 'manager', 'admin') %}3{% else %}2{% endif %}"></td>
+          </tr>
+        </tfoot>
+      </table>
+    </div>
+  </div>
+{% endif %}
+
 {# ═══ Документы этапа ═══ #}
 <div class="d-flex justify-content-between align-items-center mb-3">
   <h5 class="fw-bold mb-0">Документы этапа</h5>

@@ -51,3 +51,8 @@ def save_avatar(file):
 def save_stage_document(file, stage_id):
     folder = os.path.join(config.DOCS_FOLDER, str(stage_id))
     return _save_file(file, folder, ALLOWED_DOC | ALLOWED_IMG)
+
+
+def save_substage_photo(file, substage_id):
+    folder = os.path.join(config.UPLOAD_FOLDER, 'substages', str(substage_id))
+    return _save_file(file, folder, ALLOWED_IMG)

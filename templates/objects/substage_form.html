@@ -1,0 +1,60 @@
+{% extends "base.html" %}
+{% block title %}{{ 'Редактировать' if sub else 'Новый' }} подэтап — ШТАБ{% endblock %}
+{% block topbar_title %}{{ stage.name }} — {{ 'Редактировать подэтап' if sub else 'Новый подэтап' }}{% endblock %}
+{% block content %}
+<div class="row justify-content-center">
+  <div class="col-lg-6">
+    <div class="card">
+      <div class="card-body p-4">
+        <h5 class="fw-bold mb-1">{{ 'Редактировать подэтап' if sub else 'Новый подэтап' }}</h5>
+        <p class="text-muted mb-4" style="font-size:13px">Этап: {{ stage.name }}{% if stage.plan_end_date %} · срок до {{ stage.plan_end_date }}{% endif %}</p>
+        <form method="post">
+          <div class="mb-3">
+            <label class="form-label">Название работы *</label>
+            <input type="text" name="name" class="form-control" value="{{ sub.name if sub else '' }}" required autofocus
+                   placeholder="Устройство стяжки, Штукатурка стен…">
+          </div>
+          <div class="mb-3">
+            <label class="form-label">Описание</label>
+            <textarea name="description" class="form-control" rows="2">{{ sub.description if sub else '' }}</textarea>
+          </div>
+          <div class="row g-3 mb-3">
+            <div class="col-sm-4">
+              <label class="form-label">Объём</label>
+              <input type="number" name="volume" class="form-control" step="0.01" min="0"
+                     value="{{ sub.volume if sub and sub.volume is not none else '' }}">
+            </div>
+            <div class="col-sm-4">
+              <label class="form-label">Ед. измерения</label>
+              <select name="unit" class="form-select">
+                <option value="">—</option>
+                {% for u in UNITS %}
+                  <option value="{{ u }}" {% if sub and sub.unit == u %}selected{% endif %}>{{ u }}</option>
+                {% endfor %}
+              </select>
+            </div>
+            <div class="col-sm-4">
+              <label class="form-label">Расценка (₽)</label>
+              <input type="number" name="unit_price" class="form-control" step="0.01" min="0"
+                     value="{{ sub.unit_price if sub and sub.unit_price is not none else '' }}">
+            </div>
+          </div>
+          <div class="mb-4">
+            <label class="form-label">Срок выполнения</label>
+            <input type="date" name="plan_end_date" class="form-control"
+                   value="{{ sub.plan_end_date if sub and sub.plan_end_date else '' }}"
+                   {% if stage.plan_end_date %}max="{{ stage.plan_end_date }}"{% endif %}>
+            {% if stage.plan_end_date %}
+              <div class="form-text">Не позже {{ stage.plan_end_date }} (срок этапа)</div>
+            {% endif %}
+          </div>
+          <div class="d-flex gap-2">
+            <button type="submit" class="btn btn-primary"><i class="bi bi-check-lg me-1"></i>{{ 'Сохранить' if sub else 'Создать' }}</button>
+            <a href="{{ url_for('stage_detail', stage_id=stage.id) }}" class="btn btn-outline-secondary">Отмена</a>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

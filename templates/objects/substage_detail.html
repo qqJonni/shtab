@@ -1,0 +1,180 @@
+{% extends "base.html" %}
+{% block title %}{{ sub.name }} — ШТАБ{% endblock %}
+{% block topbar_title %}{{ stage.object_name }} → {{ stage.name }} → {{ sub.name }}{% endblock %}
+{% block content %}
+<div class="mb-3">
+  <a href="{{ url_for('stage_detail', stage_id=stage.id) }}" class="text-decoration-none" style="font-size:13px">
+    <i class="bi bi-arrow-left me-1"></i>{{ stage.name }}
+  </a>
+</div>
+
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h4 class="fw-bold mb-0">{{ sub.name }}</h4>
+  <div>
+    {% if sub.status == 'not_started' %}<span class="badge badge-pending">Не начат</span>
+    {% elif sub.status == 'in_progress' %}<span class="badge badge-progress">В работе</span>
+    {% elif sub.status == 'done' %}<span class="badge badge-done">Выполнен</span>
+    {% elif sub.status == 'closed' %}<span class="badge badge-rework">Закрыт</span>
+    {% elif sub.status == 'approved' %}<span class="badge badge-done">Согласован</span>
+    {% endif %}
+  </div>
+</div>
+
+{# Информация #}
+<div class="card mb-4">
+  <div class="card-body p-4">
+    <div class="row g-3">
+      {% if sub.description %}
+      <div class="col-12">
+        <div class="text-muted" style="font-size:12px">Описание</div>
+        <div style="font-size:14px">{{ sub.description }}</div>
+      </div>
+      {% endif %}
+      <div class="col-sm-3">
+        <div class="text-muted" style="font-size:12px">Объём</div>
+        <div style="font-size:14px">{{ '{:,.2f}'.format(sub.volume).replace(',', ' ') if sub.volume is not none else '—' }} {{ sub.unit or '' }}</div>
+      </div>
+      <div class="col-sm-3">
+        <div class="text-muted" style="font-size:12px">Расценка</div>
+        <div style="font-size:14px">{{ '{:,.2f}'.format(sub.unit_price).replace(',', ' ') if sub.unit_price is not none else '—' }} ₽</div>
+      </div>
+      <div class="col-sm-3">
+        <div class="text-muted" style="font-size:12px">Сумма</div>
+        <div style="font-size:15px;font-weight:600;color:var(--primary)">{{ '{:,.2f}'.format(sub.total_price).replace(',', ' ') if sub.total_price is not none else '—' }} ₽</div>
+      </div>
+      <div class="col-sm-3">
+        <div class="text-muted" style="font-size:12px">Срок</div>
+        <div style="font-size:14px">{{ sub.plan_end_date or '—' }}</div>
+      </div>
+      {% if sub.completed_at %}
+      <div class="col-sm-3">
+        <div class="text-muted" style="font-size:12px">Выполнен</div>
+        <div style="font-size:14px">{{ sub.completed_at[:10] }}</div>
+      </div>
+      {% endif %}
+    </div>
+  </div>
+</div>
+
+{# Смена статуса #}
+{% if can_change_status and sub.status in ('not_started', 'in_progress', 'done') %}
+<div class="card mb-4">
+  <div class="card-body p-3">
+    <div class="d-flex align-items-center gap-2 flex-wrap">
+      <span class="text-muted" style="font-size:13px">Статус:</span>
+      {% for st, label in [('not_started', 'Не начат'), ('in_progress', 'В работе'), ('done', 'Выполнен')] %}
+        {% if st == sub.status %}
+          <span class="btn btn-sm btn-primary disabled">{{ label }}</span>
+        {% else %}
+          <form method="post" action="{{ url_for('substage_status', sub_id=sub.id) }}" class="d-inline">
+            <input type="hidden" name="status" value="{{ st }}">
+            <button class="btn btn-sm btn-outline-{% if st == 'done' %}success{% elif st == 'in_progress' %}primary{% else %}secondary{% endif %}"
+                    {% if st == 'done' %}onclick="return confirm('Отметить подэтап как выполненный?')"{% endif %}>
+              {{ label }}
+            </button>
+          </form>
+        {% endif %}
+      {% endfor %}
+    </div>
+  </div>
+</div>
+{% endif %}
+
+{# ═══ Фото подэтапа ═══ #}
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h5 class="fw-bold mb-0">Фото</h5>
+</div>
+
+{% if can_upload_photo %}
+<div class="card mb-3">
+  <div class="card-body p-3">
+    <form method="post" action="{{ url_for('substage_photo_upload', sub_id=sub.id) }}" enctype="multipart/form-data">
+      <div class="d-flex gap-2 align-items-end">
+        <div class="flex-grow-1">
+          <input type="file" name="photos" class="form-control" accept="image/*" multiple required>
+        </div>
+        <button type="submit" class="btn btn-primary"><i class="bi bi-camera me-1"></i>Загрузить</button>
+      </div>
+    </form>
+  </div>
+</div>
+{% endif %}
+
+{% if not photos %}
+  <div class="card">
+    <div class="card-body text-center py-5 text-muted">
+      <i class="bi bi-image" style="font-size:48px;opacity:.3"></i>
+      <p class="mt-3 mb-0">Фото пока не загружены.</p>
+    </div>
+  </div>
+{% else %}
+  <div class="row g-2">
+    {% for p in photos %}
+    <div class="col-4 col-sm-3 col-md-2">
+      <div class="photo-thumb-wrap">
+        <img src="{{ url_for('static', filename='uploads/substages/' + sub.id|string + '/' + p.filename) }}"
+             alt="Фото" class="gallery-img" data-bs-toggle="modal" data-bs-target="#galleryModal"
+             onclick="openGallery({{ loop.index0 }})">
+        {% if can_upload_photo or current_user.role in ('pto', 'manager', 'admin') %}
+          <form method="post" action="{{ url_for('substage_photo_delete', sub_id=sub.id, photo_id=p.id) }}" class="d-inline">
+            <button class="remove-photo" type="submit" onclick="return confirm('Удалить фото?')">×</button>
+          </form>
+        {% endif %}
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+
+  {# Модалка галереи #}
+  <div class="modal fade" id="galleryModal" tabindex="-1">
+    <div class="modal-dialog modal-lg modal-dialog-centered">
+      <div class="modal-content" style="background:rgba(0,0,0,0.95);border:none">
+        <div class="modal-header border-0 pb-0">
+          <span class="text-white" id="galleryCounter" style="font-size:13px"></span>
+          <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body text-center p-2">
+          <img id="galleryImg" src="" style="max-width:100%;max-height:75vh;border-radius:8px">
+        </div>
+        <div class="modal-footer border-0 justify-content-center pt-0">
+          <button class="btn btn-outline-light btn-sm" onclick="galleryPrev()"><i class="bi bi-chevron-left"></i> Назад</button>
+          <button class="btn btn-outline-light btn-sm" onclick="galleryNext()">Далее <i class="bi bi-chevron-right"></i></button>
+        </div>
+      </div>
+    </div>
+  </div>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+{% if photos %}
+<script>
+var galleryPhotos = {{ photos_json|tojson }};
+var galleryIdx = 0;
+var subId = {{ sub.id }};
+function openGallery(idx) {
+  galleryIdx = idx;
+  showGalleryPhoto();
+}
+function showGalleryPhoto() {
+  var p = galleryPhotos[galleryIdx];
+  document.getElementById('galleryImg').src = '/static/uploads/substages/' + subId + '/' + p.filename;
+  document.getElementById('galleryCounter').textContent = (galleryIdx + 1) + ' / ' + galleryPhotos.length;
+}
+function galleryNext() {
+  galleryIdx = (galleryIdx + 1) % galleryPhotos.length;
+  showGalleryPhoto();
+}
+function galleryPrev() {
+  galleryIdx = (galleryIdx - 1 + galleryPhotos.length) % galleryPhotos.length;
+  showGalleryPhoto();
+}
+document.addEventListener('keydown', function(e) {
+  var modal = document.getElementById('galleryModal');
+  if (!modal.classList.contains('show')) return;
+  if (e.key === 'ArrowRight') galleryNext();
+  if (e.key === 'ArrowLeft') galleryPrev();
+});
+</script>
+{% endif %}
+{% endblock %}

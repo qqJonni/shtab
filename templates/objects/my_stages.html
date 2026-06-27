@@ -21,6 +21,7 @@
             <th>#</th>
             <th>Этап</th>
             <th>Сроки</th>
+            <th>Прогресс</th>
             <th>Статус</th>
           </tr>
         </thead>
@@ -42,6 +43,16 @@
               {% if s.plan_start_date and s.plan_end_date %} — {% endif %}
               {% if s.plan_end_date %}{{ s.plan_end_date }}{% endif %}
               {% if not s.plan_start_date and not s.plan_end_date %}—{% endif %}
+            </td>
+            <td style="min-width:100px">
+              {% if s.sub_total > 0 %}
+                <div style="font-size:11px;color:var(--text-secondary)">{{ s.sub_done }}/{{ s.sub_total }}</div>
+                <div class="progress mt-1">
+                  <div class="progress-bar" style="width:{{ (s.sub_done / s.sub_total * 100)|round }}%"></div>
+                </div>
+              {% else %}
+                <span class="text-muted" style="font-size:12px">—</span>
+              {% endif %}
             </td>
             <td>
               {% if s.status == 'planned' %}<span class="badge badge-pending">Планируется</span>

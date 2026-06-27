@@ -4,10 +4,11 @@ from flask_login import login_required, current_user
 
 import config
 from db import query_db, execute_db, notify
-from helpers import role_required, save_stage_document
+from helpers import role_required, save_stage_document, save_substage_photo
 
 VIEWERS = ('manager', 'admin', 'pto', 'inspector', 'foreman')
 EDITORS = ('manager', 'admin')
+SUBSTAGE_EDITORS = ('pto', 'manager', 'admin')
 
 DOC_TYPE_LABELS = {
     'contract': 'Договор',
@@ -289,7 +290,12 @@ def register(app):
             'ORDER BY o.name, cs.order_num',
             (current_user.organization_id,),
         )
-        return render_template('objects/my_stages.html', stages=stages)
+        stages_list = [dict(s) for s in stages]
+        for s in stages_list:
+            subs = query_db('SELECT status FROM substages WHERE stage_id = ?', (s['id'],))
+            s['sub_total'] = len(subs)
+            s['sub_done'] = sum(1 for sub in subs if sub['status'] == 'done')
+        return render_template('objects/my_stages.html', stages=stages_list)
 
     # ═══ Страница этапа и документы ═══
 
@@ -322,9 +328,13 @@ def register(app):
             'SELECT sd.*, u.full_name as uploader_name '
             'FROM stage_documents sd LEFT JOIN users u ON sd.uploaded_by = u.id '
             'WHERE sd.stage_id = ? ORDER BY sd.uploaded_at DESC', (stage_id,))
+        substages = query_db(
+            'SELECT * FROM substages WHERE stage_id = ? ORDER BY id', (stage_id,))
+        total_sum = sum(s['total_price'] or 0 for s in substages)
         return render_template('objects/stage_detail.html',
                                stage=stage, docs=docs, doc_type_labels=DOC_TYPE_LABELS,
-                               can_upload=_can_upload_doc(stage))
+                               can_upload=_can_upload_doc(stage),
+                               substages=substages, total_sum=total_sum)
 
     @app.route('/stages/<int:stage_id>/docs/upload', methods=['POST'])
     @login_required
@@ -391,3 +401,239 @@ def register(app):
         execute_db('DELETE FROM stage_documents WHERE id = ?', (doc_id,))
         flash('Документ удалён.', 'success')
         return redirect(url_for('stage_detail', stage_id=stage_id))
+
+    # ═══ Подэтапы (состав работ) ═══
+
+    def _calc_total(volume, unit_price):
+        if volume is not None and unit_price is not None:
+            try:
+                return round(float(volume) * float(unit_price), 2)
+            except (ValueError, TypeError):
+                pass
+        return None
+
+    @app.route('/stages/<int:stage_id>/substages/add', methods=['GET', 'POST'])
+    @login_required
+    @role_required(*SUBSTAGE_EDITORS)
+    def substage_add(stage_id):
+        stage = query_db('SELECT * FROM construction_stages WHERE id = ?', (stage_id,), one=True)
+        if not stage:
+            abort(404)
+
+        if request.method == 'POST':
+            name = request.form.get('name', '').strip()
+            description = request.form.get('description', '').strip()
+            volume = request.form.get('volume', '').strip() or None
+            unit = request.form.get('unit', '').strip()
+            unit_price = request.form.get('unit_price', '').strip() or None
+            plan_end = request.form.get('plan_end_date', '').strip() or None
+
+            if not name:
+                flash('Введите название подэтапа.', 'danger')
+                return render_template('objects/substage_form.html', stage=stage, sub=None)
+
+            if plan_end and stage['plan_end_date'] and plan_end > stage['plan_end_date']:
+                flash(f'Срок подэтапа ({plan_end}) не может быть позже срока этапа ({stage["plan_end_date"]}).', 'danger')
+                return render_template('objects/substage_form.html', stage=stage, sub=None)
+
+            try:
+                volume = float(volume) if volume else None
+            except ValueError:
+                volume = None
+            try:
+                unit_price = float(unit_price) if unit_price else None
+            except ValueError:
+                unit_price = None
+
+            total_price = _calc_total(volume, unit_price)
+
+            execute_db(
+                'INSERT INTO substages (stage_id, name, description, volume, unit, unit_price, total_price, plan_end_date, created_by) '
+                'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+                (stage_id, name, description, volume, unit, unit_price, total_price, plan_end, current_user.id),
+            )
+            flash('Подэтап создан.', 'success')
+            return redirect(url_for('stage_detail', stage_id=stage_id))
+
+        return render_template('objects/substage_form.html', stage=stage, sub=None)
+
+    @app.route('/substages/<int:sub_id>/edit', methods=['GET', 'POST'])
+    @login_required
+    @role_required(*SUBSTAGE_EDITORS)
+    def substage_edit(sub_id):
+        sub = query_db('SELECT * FROM substages WHERE id = ?', (sub_id,), one=True)
+        if not sub:
+            abort(404)
+        stage = query_db('SELECT * FROM construction_stages WHERE id = ?', (sub['stage_id'],), one=True)
+
+        if request.method == 'POST':
+            name = request.form.get('name', '').strip()
+            description = request.form.get('description', '').strip()
+            volume = request.form.get('volume', '').strip() or None
+            unit = request.form.get('unit', '').strip()
+            unit_price = request.form.get('unit_price', '').strip() or None
+            plan_end = request.form.get('plan_end_date', '').strip() or None
+
+            if not name:
+                flash('Введите название подэтапа.', 'danger')
+                return render_template('objects/substage_form.html', stage=stage, sub=sub)
+
+            if plan_end and stage['plan_end_date'] and plan_end > stage['plan_end_date']:
+                flash(f'Срок подэтапа ({plan_end}) не может быть позже срока этапа ({stage["plan_end_date"]}).', 'danger')
+                return render_template('objects/substage_form.html', stage=stage, sub=sub)
+
+            try:
+                volume = float(volume) if volume else None
+            except ValueError:
+                volume = None
+            try:
+                unit_price = float(unit_price) if unit_price else None
+            except ValueError:
+                unit_price = None
+
+            total_price = _calc_total(volume, unit_price)
+
+            execute_db(
+                'UPDATE substages SET name=?, description=?, volume=?, unit=?, unit_price=?, total_price=?, plan_end_date=? WHERE id=?',
+                (name, description, volume, unit, unit_price, total_price, plan_end, sub_id),
+            )
+            flash('Подэтап обновлён.', 'success')
+            return redirect(url_for('stage_detail', stage_id=sub['stage_id']))
+
+        return render_template('objects/substage_form.html', stage=stage, sub=sub)
+
+    @app.route('/substages/<int:sub_id>/delete', methods=['POST'])
+    @login_required
+    @role_required(*SUBSTAGE_EDITORS)
+    def substage_delete(sub_id):
+        sub = query_db('SELECT * FROM substages WHERE id = ?', (sub_id,), one=True)
+        if not sub:
+            abort(404)
+        execute_db('DELETE FROM substages WHERE id = ?', (sub_id,))
+        flash('Подэтап удалён.', 'success')
+        return redirect(url_for('stage_detail', stage_id=sub['stage_id']))
+
+    # ═══ Страница подэтапа, статус, фото ═══
+
+    STATUS_LABELS = {
+        'not_started': 'Не начат',
+        'in_progress': 'В работе',
+        'done': 'Выполнен',
+        'closed': 'Закрыт',
+        'approved': 'Согласован',
+    }
+
+    def _can_change_substage_status(stage):
+        if current_user.role in SUBSTAGE_EDITORS:
+            return True
+        if current_user.role == 'foreman':
+            return True
+        if current_user.role == 'contractor' and stage['contractor_id'] == current_user.organization_id:
+            return True
+        return False
+
+    def _can_upload_substage_photo(stage):
+        if current_user.role == 'foreman':
+            return True
+        if current_user.role == 'contractor' and stage['contractor_id'] == current_user.organization_id:
+            return True
+        return False
+
+    @app.route('/substages/<int:sub_id>')
+    @login_required
+    def substage_detail(sub_id):
+        sub = query_db('SELECT * FROM substages WHERE id = ?', (sub_id,), one=True)
+        if not sub:
+            abort(404)
+        stage = query_db(
+            'SELECT cs.*, org.name as contractor_name, o.name as object_name '
+            'FROM construction_stages cs '
+            'LEFT JOIN organizations org ON cs.contractor_id = org.id '
+            'JOIN objects o ON cs.object_id = o.id '
+            'WHERE cs.id = ?', (sub['stage_id'],), one=True)
+        if not stage or not _can_view_stage(stage):
+            abort(403)
+        photos = query_db(
+            'SELECT sp.*, u.full_name as uploader_name '
+            'FROM substage_photos sp LEFT JOIN users u ON sp.uploaded_by = u.id '
+            'WHERE sp.substage_id = ? ORDER BY sp.uploaded_at DESC', (sub_id,))
+        photos_list = [dict(p) for p in photos]
+        return render_template('objects/substage_detail.html',
+                               sub=sub, stage=stage, photos=photos, photos_json=photos_list,
+                               status_labels=STATUS_LABELS,
+                               can_change_status=_can_change_substage_status(stage),
+                               can_upload_photo=_can_upload_substage_photo(stage))
+
+    @app.route('/substages/<int:sub_id>/status', methods=['POST'])
+    @login_required
+    def substage_status(sub_id):
+        sub = query_db('SELECT * FROM substages WHERE id = ?', (sub_id,), one=True)
+        if not sub:
+            abort(404)
+        stage = query_db('SELECT * FROM construction_stages WHERE id = ?', (sub['stage_id'],), one=True)
+        if not _can_change_substage_status(stage):
+            abort(403)
+
+        new_status = request.form.get('status', '')
+        if new_status not in ('not_started', 'in_progress', 'done'):
+            flash('Недопустимый статус.', 'danger')
+            return redirect(url_for('substage_detail', sub_id=sub_id))
+
+        from db import get_db
+        db = get_db()
+        if new_status == 'done':
+            db.execute('UPDATE substages SET status = ?, completed_at = CURRENT_TIMESTAMP WHERE id = ?',
+                       (new_status, sub_id))
+        else:
+            db.execute('UPDATE substages SET status = ?, completed_at = NULL WHERE id = ?',
+                       (new_status, sub_id))
+        db.commit()
+
+        flash(f'Статус изменён: {STATUS_LABELS.get(new_status, new_status)}.', 'success')
+        return redirect(url_for('substage_detail', sub_id=sub_id))
+
+    @app.route('/substages/<int:sub_id>/photos/upload', methods=['POST'])
+    @login_required
+    def substage_photo_upload(sub_id):
+        sub = query_db('SELECT * FROM substages WHERE id = ?', (sub_id,), one=True)
+        if not sub:
+            abort(404)
+        stage = query_db('SELECT * FROM construction_stages WHERE id = ?', (sub['stage_id'],), one=True)
+        if not _can_upload_substage_photo(stage):
+            abort(403)
+
+        files = request.files.getlist('photos')
+        count = 0
+        for file in files:
+            filename = save_substage_photo(file, sub_id)
+            if filename:
+                execute_db(
+                    'INSERT INTO substage_photos (substage_id, filename, uploaded_by) VALUES (?, ?, ?)',
+                    (sub_id, filename, current_user.id),
+                )
+                count += 1
+
+        if count:
+            flash(f'Загружено фото: {count}.', 'success')
+        else:
+            flash('Не удалось загрузить фото. Допустимы: jpg, png, gif, webp.', 'danger')
+        return redirect(url_for('substage_detail', sub_id=sub_id))
+
+    @app.route('/substages/<int:sub_id>/photos/<int:photo_id>/delete', methods=['POST'])
+    @login_required
+    def substage_photo_delete(sub_id, photo_id):
+        sub = query_db('SELECT * FROM substages WHERE id = ?', (sub_id,), one=True)
+        photo = query_db('SELECT * FROM substage_photos WHERE id = ? AND substage_id = ?',
+                         (photo_id, sub_id), one=True)
+        if not sub or not photo:
+            abort(404)
+        stage = query_db('SELECT * FROM construction_stages WHERE id = ?', (sub['stage_id'],), one=True)
+        if not _can_upload_substage_photo(stage) and current_user.role not in SUBSTAGE_EDITORS:
+            abort(403)
+
+        filepath = os.path.join(config.UPLOAD_FOLDER, 'substages', str(sub_id), photo['filename'])
+        if os.path.exists(filepath):
+            os.remove(filepath)
+        execute_db('DELETE FROM substage_photos WHERE id = ?', (photo_id,))
+        flash('Фото удалено.', 'success')
+        return redirect(url_for('substage_detail', sub_id=sub_id))

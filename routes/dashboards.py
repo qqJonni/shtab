@@ -83,7 +83,37 @@ def register(app):
     @app.route('/dashboard/pto')
     @login_required
     def dashboard_pto():
-        return _render('pto')
+        if current_user.role != 'pto' and current_user.role != 'admin':
+            abort(403)
+        from db import query_db
+        stages = query_db(
+            'SELECT cs.id, cs.name, cs.status, o.name as object_name, o.id as object_id '
+            'FROM construction_stages cs JOIN objects o ON cs.object_id = o.id '
+            "WHERE o.status = 'active' ORDER BY o.name, cs.order_num"
+        )
+        stages_list = [dict(s) for s in stages]
+        stages_no_subs = 0
+        total_substages = 0
+        substages_in_progress = 0
+        substages_done = 0
+        for s in stages_list:
+            subs = query_db('SELECT status FROM substages WHERE stage_id = ?', (s['id'],))
+            cnt = len(subs)
+            s['sub_total'] = cnt
+            s['sub_done'] = sum(1 for sub in subs if sub['status'] == 'done')
+            s['sub_in_progress'] = sum(1 for sub in subs if sub['status'] == 'in_progress')
+            if cnt == 0:
+                stages_no_subs += 1
+            total_substages += cnt
+            substages_in_progress += s['sub_in_progress']
+            substages_done += s['sub_done']
+        import config
+        return render_template('dashboards/pto.html',
+                               stages=stages_list, stages_no_subs=stages_no_subs,
+                               total_substages=total_substages,
+                               substages_in_progress=substages_in_progress,
+                               substages_done=substages_done,
+                               role_label=config.ROLES.get('pto'))
 
     @app.route('/dashboard/inspector')
     @login_required
@@ -119,9 +149,14 @@ def register(app):
             'ORDER BY cs.status, o.name, cs.order_num',
             (current_user.organization_id,),
         )
+        stages_list = [dict(s) for s in stages]
+        for s in stages_list:
+            subs = query_db('SELECT status FROM substages WHERE stage_id = ?', (s['id'],))
+            s['sub_total'] = len(subs)
+            s['sub_done'] = sum(1 for sub in subs if sub['status'] == 'done')
         import config
         return render_template('dashboards/contractor.html',
-                               stages=stages, role_label=config.ROLES.get('contractor'))
+                               stages=stages_list, role_label=config.ROLES.get('contractor'))
 
     @app.route('/dashboard/guest')
     @login_required

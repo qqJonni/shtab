@@ -174,6 +174,30 @@ def init_db():
             uploaded_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         );
 
+        CREATE TABLE IF NOT EXISTS substages (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            stage_id INTEGER NOT NULL REFERENCES construction_stages(id) ON DELETE CASCADE,
+            name TEXT NOT NULL,
+            description TEXT,
+            volume REAL,
+            unit TEXT,
+            unit_price REAL,
+            total_price REAL,
+            plan_end_date DATE,
+            status TEXT NOT NULL DEFAULT 'not_started' CHECK(status IN ('not_started', 'in_progress', 'done', 'closed', 'approved')),
+            created_by INTEGER REFERENCES users(id),
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            completed_at TIMESTAMP
+        );
+
+        CREATE TABLE IF NOT EXISTS substage_photos (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            substage_id INTEGER NOT NULL REFERENCES substages(id) ON DELETE CASCADE,
+            filename TEXT NOT NULL,
+            uploaded_by INTEGER REFERENCES users(id),
+            uploaded_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+
         CREATE TABLE IF NOT EXISTS guest_tokens (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             object_id INTEGER,

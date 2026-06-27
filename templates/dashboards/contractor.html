@@ -77,6 +77,17 @@
             {% if s.plan_end_date %}
               <div class="text-muted mt-1" style="font-size:12px"><i class="bi bi-calendar me-1"></i>до {{ s.plan_end_date }}</div>
             {% endif %}
+            {% if s.sub_total > 0 %}
+              <div class="mt-2">
+                <div class="d-flex justify-content-between" style="font-size:11px;color:var(--text-secondary)">
+                  <span>Подэтапы</span>
+                  <span>{{ s.sub_done }}/{{ s.sub_total }}</span>
+                </div>
+                <div class="progress mt-1">
+                  <div class="progress-bar" style="width:{{ (s.sub_done / s.sub_total * 100)|round }}%"></div>
+                </div>
+              </div>
+            {% endif %}
           </div>
         </div>
       </a>
