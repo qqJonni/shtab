@@ -13,6 +13,7 @@ SUBSTAGE_EDITORS = ('pto', 'manager', 'admin')
 DOC_TYPE_LABELS = {
     'contract': 'Договор',
     'tech_spec': 'Техническое задание',
+    'price_doc': 'Ценовой документ',
     'work_schedule': 'График производства работ',
     'other': 'Прочее',
 }
@@ -38,7 +39,7 @@ def register(app):
             abort(404)
         if request.method == 'POST':
             execute_db(
-                'UPDATE organizations SET name=?, inn=?, kpp=?, address=?, ogrn=?, okpo=?, phone=?, '
+                'UPDATE organizations SET name=?, inn=?, kpp=?, address=?, ogrn=?, okpo=?, phone=?, email=?, '
                 'rep_position=?, rep_name=? WHERE id=?',
                 (request.form.get('name', '').strip(),
                  request.form.get('inn', '').strip(),
@@ -47,12 +48,127 @@ def register(app):
                  request.form.get('ogrn', '').strip(),
                  request.form.get('okpo', '').strip(),
                  request.form.get('phone', '').strip(),
+                 request.form.get('email', '').strip(),
                  request.form.get('rep_position', '').strip(),
                  request.form.get('rep_name', '').strip(),
                  org_id))
             flash('Организация обновлена.', 'success')
             return redirect(url_for('organizations_list'))
-        return render_template('organizations/edit.html', org=org)
+        free_contractors = query_db(
+            "SELECT id, full_name, username FROM users WHERE role='contractor' "
+            "AND (organization_id IS NULL) AND is_approved=1 ORDER BY full_name")
+        return render_template('organizations/edit.html', org=org,
+                               contractors=_get_contractor_users(org_id),
+                               all_contractors=free_contractors)
+
+    @app.route('/organizations/add', methods=['GET', 'POST'])
+    @login_required
+    @role_required('admin', 'manager')
+    def organization_add():
+        contractors = query_db(
+            "SELECT id, full_name, username FROM users WHERE role='contractor' "
+            "AND (organization_id IS NULL) AND is_approved=1 ORDER BY full_name")
+        if request.method == 'POST':
+            name = request.form.get('name', '').strip()
+            if not name:
+                flash('Введите название организации.', 'danger')
+                return render_template('organizations/add.html', contractors=contractors)
+            org_type = request.form.get('type', 'contractor')
+            if org_type not in ('developer', 'contractor'):
+                org_type = 'contractor'
+
+            from db import get_db
+            db = get_db()
+            cur = db.execute(
+                'INSERT INTO organizations (name, type, inn, kpp, address, ogrn, okpo, phone, email, rep_position, rep_name) '
+                'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+                (name, org_type,
+                 request.form.get('inn', '').strip(),
+                 request.form.get('kpp', '').strip(),
+                 request.form.get('address', '').strip(),
+                 request.form.get('ogrn', '').strip(),
+                 request.form.get('okpo', '').strip(),
+                 request.form.get('phone', '').strip(),
+                 request.form.get('email', '').strip(),
+                 request.form.get('rep_position', '').strip(),
+                 request.form.get('rep_name', '').strip()))
+            org_id = cur.lastrowid
+
+            linked = request.form.getlist('contractor_ids')
+            for uid in linked:
+                db.execute('UPDATE users SET organization_id = ? WHERE id = ? AND role = ?',
+                           (org_id, int(uid), 'contractor'))
+            db.commit()
+
+            flash(f'Организация «{name}» создана.', 'success')
+            return redirect(url_for('organizations_list'))
+
+        return render_template('organizations/add.html', contractors=contractors)
+
+    def _get_contractor_users(org_id):
+        return query_db(
+            'SELECT id, full_name, username FROM users WHERE organization_id = ? ORDER BY full_name',
+            (org_id,))
+
+    @app.route('/organizations/<int:org_id>/link-user', methods=['POST'])
+    @login_required
+    @role_required('admin', 'manager')
+    def organization_link_user(org_id):
+        user_id = request.form.get('user_id', '')
+        if user_id:
+            execute_db('UPDATE users SET organization_id = ? WHERE id = ? AND role = ?',
+                       (org_id, int(user_id), 'contractor'))
+            flash('Подрядчик привязан к организации.', 'success')
+        return redirect(url_for('organization_edit', org_id=org_id))
+
+    @app.route('/organizations/<int:org_id>/unlink-user/<int:user_id>', methods=['POST'])
+    @login_required
+    @role_required('admin', 'manager')
+    def organization_unlink_user(org_id, user_id):
+        execute_db('UPDATE users SET organization_id = NULL WHERE id = ? AND organization_id = ?',
+                   (user_id, org_id))
+        flash('Подрядчик откреплён от организации.', 'success')
+        return redirect(url_for('organization_edit', org_id=org_id))
+
+    @app.route('/organizations/<int:org_id>/delete', methods=['GET', 'POST'])
+    @login_required
+    @role_required('admin', 'manager')
+    def organization_delete(org_id):
+        org = query_db('SELECT * FROM organizations WHERE id = ?', (org_id,), one=True)
+        if not org:
+            abort(404)
+
+        links = []
+        cnt = query_db('SELECT COUNT(*) as c FROM users WHERE organization_id=?', (org_id,), one=True)['c']
+        if cnt:
+            links.append({'icon': 'bi-people', 'label': 'Пользователи', 'count': cnt, 'action': 'Открепить'})
+        cnt = query_db('SELECT COUNT(*) as c FROM construction_stages WHERE contractor_id=?', (org_id,), one=True)['c']
+        if cnt:
+            links.append({'icon': 'bi-layers', 'label': 'Этапы (подрядчик)', 'count': cnt, 'action': 'Открепить'})
+        cnt = query_db('SELECT COUNT(*) as c FROM defects WHERE contractor_id=?', (org_id,), one=True)['c']
+        if cnt:
+            links.append({'icon': 'bi-exclamation-triangle', 'label': 'Замечания', 'count': cnt, 'action': 'Открепить'})
+        cnt = query_db('SELECT COUNT(*) as c FROM doc_packages WHERE contractor_id=?', (org_id,), one=True)['c']
+        if cnt:
+            links.append({'icon': 'bi-folder', 'label': 'Пакеты документов', 'count': cnt, 'action': 'Открепить'})
+        cnt = query_db('SELECT COUNT(*) as c FROM material_requests WHERE contractor_id=?', (org_id,), one=True)['c']
+        if cnt:
+            links.append({'icon': 'bi-box-seam', 'label': 'Заявки на материал', 'count': cnt, 'action': 'Открепить'})
+
+        if request.method == 'POST':
+            from db import get_db
+            db = get_db()
+            db.execute('UPDATE users SET organization_id = NULL WHERE organization_id = ?', (org_id,))
+            db.execute("UPDATE construction_stages SET contractor_id = NULL, contractor_status = 'search' WHERE contractor_id = ?", (org_id,))
+            db.execute('UPDATE defects SET contractor_id = NULL WHERE contractor_id = ?', (org_id,))
+            db.execute('UPDATE doc_packages SET contractor_id = NULL WHERE contractor_id = ?', (org_id,))
+            db.execute('UPDATE material_requests SET contractor_id = NULL WHERE contractor_id = ?', (org_id,))
+            db.execute('DELETE FROM organizations WHERE id = ?', (org_id,))
+            db.commit()
+            flash(f'Организация «{org["name"]}» удалена. Связи откреплены.', 'success')
+            return redirect(url_for('organizations_list'))
+
+        return render_template('organizations/delete.html', org=org, links=links)
 
     # ═══ Объекты ═══
 
@@ -394,7 +510,7 @@ def register(app):
         return False
 
     def _can_upload_doc(stage):
-        if current_user.role in EDITORS:
+        if current_user.role in EDITORS or current_user.role == 'pto':
             return True
         if current_user.role == 'contractor' and stage['contractor_id'] == current_user.organization_id:
             return True
@@ -468,8 +584,12 @@ def register(app):
         if not doc:
             abort(404)
         folder = os.path.join(config.DOCS_FOLDER, str(stage_id))
+        ext = doc['filename'].rsplit('.', 1)[-1] if '.' in doc['filename'] else ''
+        dl_name = doc['title']
+        if ext and not dl_name.lower().endswith('.' + ext.lower()):
+            dl_name = f"{dl_name}.{ext}"
         return send_from_directory(folder, doc['filename'], as_attachment=True,
-                                   download_name=doc['title'])
+                                   download_name=dl_name)
 
     @app.route('/stages/<int:stage_id>/docs/<int:doc_id>/delete', methods=['POST'])
     @login_required
@@ -479,7 +599,10 @@ def register(app):
                        (doc_id, stage_id), one=True)
         if not stage or not doc:
             abort(404)
-        if current_user.role not in EDITORS and doc['uploaded_by'] != current_user.id:
+        can_delete = (current_user.role in EDITORS
+                      or current_user.role == 'pto'
+                      or (current_user.role == 'contractor' and stage['contractor_id'] == current_user.organization_id))
+        if not can_delete:
             abort(403)
         # Удаляем файл с диска
         filepath = os.path.join(config.DOCS_FOLDER, str(stage_id), doc['filename'])

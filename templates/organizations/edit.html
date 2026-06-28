@@ -4,7 +4,7 @@
 {% block content %}
 <div class="row justify-content-center">
   <div class="col-lg-7">
-    <div class="card">
+    <div class="card mb-4">
       <div class="card-body p-4">
         <h5 class="fw-bold mb-4">{{ org.name }}</h5>
         <form method="post">
@@ -14,13 +14,23 @@
               <input type="text" name="name" class="form-control" value="{{ org.name }}" required>
             </div>
             <div class="col-sm-4">
-              <label class="form-label">Телефон</label>
-              <input type="text" name="phone" class="form-control" value="{{ org.phone or '' }}">
+              <label class="form-label">Тип</label>
+              <span class="badge {% if org.type == 'developer' %}badge-progress{% else %}badge-pending{% endif %}" style="margin-top:28px">{% if org.type == 'developer' %}Заказчик{% else %}Подрядчик{% endif %}</span>
             </div>
           </div>
           <div class="mb-3">
             <label class="form-label">Адрес</label>
             <input type="text" name="address" class="form-control" value="{{ org.address or '' }}">
+          </div>
+          <div class="row g-3 mb-3">
+            <div class="col-sm-6">
+              <label class="form-label">Телефон</label>
+              <input type="text" name="phone" class="form-control" value="{{ org.phone or '' }}">
+            </div>
+            <div class="col-sm-6">
+              <label class="form-label">Электронная почта</label>
+              <input type="email" name="email" class="form-control" value="{{ org.email or '' }}">
+            </div>
           </div>
           <hr class="my-3"><h6 class="fw-bold mb-3" style="font-size:14px">Реквизиты</h6>
           <div class="row g-3 mb-3">
@@ -59,6 +69,45 @@
         </form>
       </div>
     </div>
+
+    {# Привязанные подрядчики #}
+    {% if contractors is defined %}
+    <div class="card">
+      <div class="card-body p-4">
+        <h6 class="fw-bold mb-3">Привязанные пользователи</h6>
+        {% if contractors %}
+          {% for c in contractors %}
+          <div class="d-flex justify-content-between align-items-center py-2" {% if not loop.last %}style="border-bottom:1px solid var(--border)"{% endif %}>
+            <div>
+              <span class="fw-medium">{{ c.full_name or c.username }}</span>
+              <span class="text-muted ms-1" style="font-size:12px">({{ c.username }})</span>
+            </div>
+            <form method="post" action="{{ url_for('organization_unlink_user', org_id=org.id, user_id=c.id) }}" class="d-inline">
+              <button class="btn btn-sm btn-outline-danger py-0 px-2" onclick="return confirm('Открепить пользователя?')"><i class="bi bi-x-lg"></i></button>
+            </form>
+          </div>
+          {% endfor %}
+        {% else %}
+          <p class="text-muted mb-0" style="font-size:13px">Нет привязанных пользователей.</p>
+        {% endif %}
+
+        <hr class="my-3">
+        <form method="post" action="{{ url_for('organization_link_user', org_id=org.id) }}" class="d-flex gap-2 align-items-end">
+          <div class="flex-grow-1">
+            <label class="form-label" style="font-size:12px">Привязать подрядчика</label>
+            <select name="user_id" class="form-select form-select-sm">
+              <option value="">— Выберите —</option>
+              {% set free_contractors = [] %}
+              {% for u in all_contractors %}
+                <option value="{{ u.id }}">{{ u.full_name or u.username }} ({{ u.username }})</option>
+              {% endfor %}
+            </select>
+          </div>
+          <button class="btn btn-sm btn-outline-primary"><i class="bi bi-link-45deg me-1"></i>Привязать</button>
+        </form>
+      </div>
+    </div>
+    {% endif %}
   </div>
 </div>
 {% endblock %}

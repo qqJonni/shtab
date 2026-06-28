@@ -3,9 +3,15 @@
 {% block topbar_title %}{{ stage.object_name }} → {{ stage.name }}{% endblock %}
 {% block content %}
 <div class="mb-3">
-  <a href="{{ url_for('object_detail', obj_id=stage.object_id) }}" class="text-decoration-none" style="font-size:13px">
-    <i class="bi bi-arrow-left me-1"></i>{{ stage.object_name }}
-  </a>
+  {% if current_user.role == 'contractor' %}
+    <a href="{{ url_for('my_stages') }}" class="text-decoration-none" style="font-size:13px">
+      <i class="bi bi-arrow-left me-1"></i>Мои этапы
+    </a>
+  {% else %}
+    <a href="{{ url_for('object_detail', obj_id=stage.object_id) }}" class="text-decoration-none" style="font-size:13px">
+      <i class="bi bi-arrow-left me-1"></i>{{ stage.object_name }}
+    </a>
+  {% endif %}
 </div>
 
 <div class="d-flex justify-content-between align-items-center mb-3">
@@ -51,7 +57,7 @@
 
 {# ═══ Состав работ (подэтапы) ═══ #}
 <div class="d-flex justify-content-between align-items-center mb-3">
-  <h5 class="fw-bold mb-0">Состав работ (ценовой документ)</h5>
+  <h5 class="fw-bold mb-0">Состав этапа (подэтапы)</h5>
   {% if current_user.role in ('pto', 'manager', 'admin') %}
     <a href="{{ url_for('substage_add', stage_id=stage.id) }}" class="btn btn-sm btn-primary"><i class="bi bi-plus-lg me-1"></i>Добавить работу</a>
   {% endif %}
@@ -73,8 +79,6 @@
             <th>Название</th>
             <th class="text-end">Объём</th>
             <th>Ед.</th>
-            <th class="text-end">Расценка</th>
-            <th class="text-end">Сумма</th>
             <th>Срок</th>
             <th>Статус</th>
             {% if current_user.role in ('pto', 'manager', 'admin') %}
@@ -93,11 +97,20 @@
             </td>
             <td class="text-end">{{ '{:,.2f}'.format(s.volume).replace(',', ' ') if s.volume is not none else '—' }}</td>
             <td class="text-muted">{{ s.unit or '—' }}</td>
-            <td class="text-end">{{ '{:,.2f}'.format(s.unit_price).replace(',', ' ') if s.unit_price is not none else '—' }}</td>
-            <td class="text-end fw-medium">{{ '{:,.2f}'.format(s.total_price).replace(',', ' ') if s.total_price is not none else '—' }}</td>
-            <td style="font-size:13px;white-space:nowrap">{{ s.plan_end_date or '—' }}</td>
+            <td style="font-size:13px;white-space:nowrap">
+              {% if s.plan_end_date %}
+                {% if s.plan_end_date < now_date and s.status not in ('done', 'closed', 'approved') %}
+                  <span style="color:var(--danger);font-weight:600">{{ s.plan_end_date }}</span>
+                  <span class="badge badge-overdue ms-1" style="font-size:10px">Просрочен</span>
+                {% else %}
+                  {{ s.plan_end_date }}
+                {% endif %}
+              {% else %}—{% endif %}
+            </td>
             <td>
-              {% if s.status == 'not_started' %}<span class="badge badge-pending">Не начат</span>
+              {% if s.plan_end_date and s.plan_end_date < now_date and s.status not in ('done', 'closed', 'approved') %}
+                <span class="badge badge-overdue">Просрочен</span>
+              {% elif s.status == 'not_started' %}<span class="badge badge-pending">Не начат</span>
               {% elif s.status == 'in_progress' %}<span class="badge badge-progress">В работе</span>
               {% elif s.status == 'done' %}<span class="badge badge-done">Выполнен</span>
               {% elif s.status == 'closed' %}<span class="badge badge-rework">Закрыт</span>
@@ -117,13 +130,6 @@
           </tr>
           {% endfor %}
         </tbody>
-        <tfoot>
-          <tr style="border-top:2px solid var(--border)">
-            <td colspan="4" class="text-end fw-bold" style="font-size:13px">Итого по этапу:</td>
-            <td class="text-end fw-bold" style="font-size:15px;color:var(--primary)">{{ '{:,.2f}'.format(total_sum).replace(',', ' ') }} ₽</td>
-            <td colspan="{% if current_user.role in ('pto', 'manager', 'admin') %}3{% else %}2{% endif %}"></td>
-          </tr>
-        </tfoot>
       </table>
     </div>
   </div>
@@ -190,6 +196,7 @@
             <td>
               {% if d.doc_type == 'contract' %}<span class="badge badge-progress">Договор</span>
               {% elif d.doc_type == 'tech_spec' %}<span class="badge badge-pending">ТЗ</span>
+              {% elif d.doc_type == 'price_doc' %}<span class="badge badge-rework">Ценовой документ</span>
               {% elif d.doc_type == 'work_schedule' %}<span class="badge badge-rework">График</span>
               {% else %}<span class="badge" style="background:#F1F5F9;color:#475569">Прочее</span>
               {% endif %}
@@ -200,7 +207,7 @@
             <td class="text-end">
               <div class="d-inline-flex gap-1">
                 <a href="{{ url_for('stage_doc_download', stage_id=stage.id, doc_id=d.id) }}" class="btn btn-sm btn-outline-primary py-0 px-1" title="Скачать"><i class="bi bi-download"></i></a>
-                {% if current_user.role in ('manager', 'admin') or d.uploaded_by == current_user.id %}
+                {% if current_user.role in ('manager', 'admin', 'pto') or (current_user.role == 'contractor' and stage.contractor_id == current_user.organization_id) %}
                   <form method="post" action="{{ url_for('stage_doc_delete', stage_id=stage.id, doc_id=d.id) }}" class="d-inline" onsubmit="return confirm('Удалить документ?')">
                     <button class="btn btn-sm btn-outline-danger py-0 px-1" title="Удалить"><i class="bi bi-trash"></i></button>
                   </form>

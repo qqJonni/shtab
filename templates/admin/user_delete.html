@@ -1,0 +1,56 @@
+{% extends "base.html" %}
+{% block title %}Удаление пользователя — ШТАБ{% endblock %}
+{% block topbar_title %}Удаление пользователя{% endblock %}
+{% block content %}
+<div class="row justify-content-center">
+  <div class="col-lg-6">
+    <div class="card">
+      <div class="card-body p-4">
+        <div class="d-flex align-items-center gap-3 mb-4">
+          <div class="crm-avatar-circle" style="width:48px;height:48px;font-size:18px;background:var(--danger);color:#fff">
+            <i class="bi bi-person-x"></i>
+          </div>
+          <div>
+            <h5 class="fw-bold mb-0">{{ user.full_name or user.username }}</h5>
+            <div class="text-muted" style="font-size:13px">{{ user.username }} · {{ ROLES.get(user.role, user.role) }}{% if user.org_name %} · {{ user.org_name }}{% endif %}</div>
+          </div>
+        </div>
+
+        {% if links %}
+          <div class="alert alert-warning py-3 px-3 mb-4" style="border-radius:var(--radius-card)">
+            <div class="fw-bold mb-2"><i class="bi bi-link-45deg me-1"></i>Связанные данные</div>
+            <p class="text-muted mb-3" style="font-size:13px">При удалении пользователя следующие связи будут откреплены или переназначены:</p>
+            <table class="table table-sm mb-0" style="font-size:13px">
+              <thead>
+                <tr><th>Данные</th><th class="text-end">Кол-во</th><th>Действие</th></tr>
+              </thead>
+              <tbody>
+                {% for l in links %}
+                <tr>
+                  <td><i class="bi {{ l.icon }} me-1 text-muted"></i>{{ l.label }}</td>
+                  <td class="text-end fw-medium">{{ l.count }}</td>
+                  <td><span class="badge badge-pending">{{ l.action }}</span></td>
+                </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        {% else %}
+          <div class="alert alert-info py-2 px-3 mb-4" style="border-radius:var(--radius-card)">
+            <i class="bi bi-info-circle me-1"></i>У пользователя нет связанных данных. Можно безопасно удалить.
+          </div>
+        {% endif %}
+
+        <form method="post">
+          <div class="d-flex gap-2">
+            <button type="submit" class="btn btn-danger" onclick="return confirm('Удалить пользователя «{{ user.username }}»? Все связи будут откреплены. Это действие необратимо.')">
+              <i class="bi bi-trash me-1"></i>Подтвердить удаление
+            </button>
+            <a href="{{ url_for('users_list') }}" class="btn btn-outline-secondary">Отмена</a>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

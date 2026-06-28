@@ -1,0 +1,92 @@
+{% extends "base.html" %}
+{% block title %}Новая организация — ШТАБ{% endblock %}
+{% block topbar_title %}Новая организация{% endblock %}
+{% block content %}
+<div class="row justify-content-center">
+  <div class="col-lg-7">
+    <div class="card">
+      <div class="card-body p-4">
+        <h5 class="fw-bold mb-4">Новая организация</h5>
+        <form method="post">
+          <div class="row g-3 mb-3">
+            <div class="col-sm-8">
+              <label class="form-label">Название организации *</label>
+              <input type="text" name="name" class="form-control" required autofocus>
+            </div>
+            <div class="col-sm-4">
+              <label class="form-label">Тип</label>
+              <select name="type" class="form-select">
+                <option value="contractor">Подрядчик</option>
+                <option value="developer">Заказчик</option>
+              </select>
+            </div>
+          </div>
+          <div class="mb-3">
+            <label class="form-label">Адрес</label>
+            <input type="text" name="address" class="form-control">
+          </div>
+          <div class="row g-3 mb-3">
+            <div class="col-sm-6">
+              <label class="form-label">Телефон</label>
+              <input type="text" name="phone" class="form-control">
+            </div>
+            <div class="col-sm-6">
+              <label class="form-label">Электронная почта</label>
+              <input type="email" name="email" class="form-control">
+            </div>
+          </div>
+
+          <hr class="my-3"><h6 class="fw-bold mb-3" style="font-size:14px">Реквизиты</h6>
+          <div class="row g-3 mb-3">
+            <div class="col-sm-4">
+              <label class="form-label">ИНН</label>
+              <input type="text" name="inn" class="form-control">
+            </div>
+            <div class="col-sm-4">
+              <label class="form-label">КПП</label>
+              <input type="text" name="kpp" class="form-control">
+            </div>
+            <div class="col-sm-4">
+              <label class="form-label">ОГРН</label>
+              <input type="text" name="ogrn" class="form-control">
+            </div>
+          </div>
+          <div class="mb-3">
+            <label class="form-label">ОКПО</label>
+            <input type="text" name="okpo" class="form-control">
+          </div>
+
+          <hr class="my-3"><h6 class="fw-bold mb-3" style="font-size:14px">Представитель</h6>
+          <div class="row g-3 mb-3">
+            <div class="col-sm-5">
+              <label class="form-label">Должность</label>
+              <input type="text" name="rep_position" class="form-control" placeholder="Генеральный директор">
+            </div>
+            <div class="col-sm-7">
+              <label class="form-label">ФИО</label>
+              <input type="text" name="rep_name" class="form-control">
+            </div>
+          </div>
+
+          {% if contractors %}
+          <hr class="my-3"><h6 class="fw-bold mb-3" style="font-size:14px">Привязать подрядчиков</h6>
+          <div class="mb-4">
+            {% for c in contractors %}
+              <div class="form-check">
+                <input class="form-check-input" type="checkbox" name="contractor_ids" value="{{ c.id }}" id="c{{ c.id }}">
+                <label class="form-check-label" for="c{{ c.id }}">{{ c.full_name or c.username }} <span class="text-muted">({{ c.username }})</span></label>
+              </div>
+            {% endfor %}
+          </div>
+          {% endif %}
+
+          <div class="d-flex gap-2">
+            <button type="submit" class="btn btn-primary"><i class="bi bi-check-lg me-1"></i>Создать</button>
+            <a href="{{ url_for('organizations_list') }}" class="btn btn-outline-secondary">Отмена</a>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

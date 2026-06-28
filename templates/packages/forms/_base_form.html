@@ -6,11 +6,6 @@
   <a href="{{ url_for('package_detail', package_id=pkg.id) }}" class="text-decoration-none" style="font-size:13px">
     <i class="bi bi-arrow-left me-1"></i>Пакет #{{ pkg.id }}
   </a>
-  {% if service_link %}
-    <a href="{{ service_link }}" target="_blank" class="ms-3 text-muted" style="font-size:12px">
-      <i class="bi bi-box-arrow-up-right me-1"></i>Справка: service-online.su
-    </a>
-  {% endif %}
 </div>
 
 <h4 class="fw-bold mb-4">{{ doc_type_label }}</h4>
@@ -103,8 +98,15 @@
   {# ═══ Доп. блоки — переопределяются ═══ #}
   {% block form_extra %}{% endblock %}
 
-  {# ═══ Кнопки ═══ #}
-  <div class="d-flex gap-2">
+  {# ═══ Формат и кнопки ═══ #}
+  <div class="d-flex gap-2 align-items-center">
+    <div class="d-flex align-items-center gap-2 me-2">
+      <label class="form-label mb-0" style="font-size:13px;white-space:nowrap">Формат:</label>
+      <select name="output_format" id="outputFormat" class="form-select form-select-sm" style="width:auto">
+        <option value="xlsx">Excel (.xlsx)</option>
+        <option value="pdf">PDF (.pdf)</option>
+      </select>
+    </div>
     <button type="submit" class="btn btn-success" onclick="return prepareSubmit()"><i class="bi bi-file-earmark-check me-1"></i>Сформировать документ</button>
     <a href="{{ url_for('package_detail', package_id=pkg.id) }}" class="btn btn-outline-secondary">Отмена</a>
   </div>

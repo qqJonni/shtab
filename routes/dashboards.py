@@ -153,17 +153,25 @@ def register(app):
         total_substages = 0
         substages_in_progress = 0
         substages_done = 0
+        substages_not_started = 0
+        substages_overdue = 0
+        from datetime import date
+        today = date.today().isoformat()
         for s in stages_list:
-            subs = query_db('SELECT status FROM substages WHERE stage_id = ?', (s['id'],))
+            subs = query_db('SELECT status, plan_end_date FROM substages WHERE stage_id = ?', (s['id'],))
             cnt = len(subs)
             s['sub_total'] = cnt
             s['sub_done'] = sum(1 for sub in subs if sub['status'] == 'done')
             s['sub_in_progress'] = sum(1 for sub in subs if sub['status'] == 'in_progress')
+            s['sub_not_started'] = sum(1 for sub in subs if sub['status'] == 'not_started')
+            s['sub_overdue'] = sum(1 for sub in subs if sub['plan_end_date'] and sub['plan_end_date'] < today and sub['status'] not in ('done', 'closed', 'approved'))
             if cnt == 0:
                 stages_no_subs += 1
             total_substages += cnt
             substages_in_progress += s['sub_in_progress']
             substages_done += s['sub_done']
+            substages_not_started += s['sub_not_started']
+            substages_overdue += s['sub_overdue']
         pc = _package_counts('pto')
         mr_pending = query_db("SELECT COUNT(*) as c FROM material_requests WHERE status='submitted' AND current_role='pto'", one=True)['c']
         import config
@@ -172,6 +180,8 @@ def register(app):
                                total_substages=total_substages,
                                substages_in_progress=substages_in_progress,
                                substages_done=substages_done,
+                               substages_not_started=substages_not_started,
+                               substages_overdue=substages_overdue,
                                role_label=config.ROLES.get('pto'), pc=pc,
                                mr_pending=mr_pending)
 
@@ -262,10 +272,15 @@ def register(app):
             (current_user.organization_id,),
         )
         stages_list = [dict(s) for s in stages]
+        from datetime import date
+        today = date.today().isoformat()
+        substages_overdue = 0
         for s in stages_list:
-            subs = query_db('SELECT status FROM substages WHERE stage_id = ?', (s['id'],))
+            subs = query_db('SELECT status, plan_end_date FROM substages WHERE stage_id = ?', (s['id'],))
             s['sub_total'] = len(subs)
             s['sub_done'] = sum(1 for sub in subs if sub['status'] == 'done')
+            s_overdue = sum(1 for sub in subs if sub['plan_end_date'] and sub['plan_end_date'] < today and sub['status'] not in ('done', 'closed', 'approved'))
+            substages_overdue += s_overdue
         # Defect counts for contractor
         org_id = current_user.organization_id
         defect_open = query_db("SELECT COUNT(*) as c FROM defects WHERE contractor_id=? AND status IN ('open','rejected')",
@@ -292,7 +307,8 @@ def register(app):
                                defect_overdue=defect_overdue,
                                pkg_in_review=pkg_in_review, pkg_returned=pkg_returned,
                                pkg_completed=pkg_completed,
-                               mr_active=mr_active, mr_returned=mr_returned)
+                               mr_active=mr_active, mr_returned=mr_returned,
+                               substages_overdue=substages_overdue)
 
     @app.route('/dashboard/guest')
     @login_required

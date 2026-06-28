@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+{% block title %}Редактирование пользователя — ШТАБ{% endblock %}
+{% block topbar_title %}Редактирование пользователя{% endblock %}
+{% block content %}
+<div class="row justify-content-center">
+  <div class="col-lg-6">
+    <div class="card">
+      <div class="card-body p-4">
+        <h5 class="fw-bold mb-4">{{ user.full_name or user.username }}</h5>
+        <form method="post">
+          <div class="mb-3">
+            <label class="form-label">ФИО *</label>
+            <input type="text" name="full_name" class="form-control" value="{{ user.full_name or '' }}" required>
+          </div>
+          <div class="mb-3">
+            <label class="form-label">Логин *</label>
+            <input type="text" name="username" class="form-control" value="{{ user.username }}" required>
+          </div>
+          <div class="mb-3">
+            <label class="form-label">Новый пароль</label>
+            <input type="password" name="new_password" class="form-control" placeholder="Оставьте пустым, если не меняете">
+          </div>
+          <div class="row g-3 mb-3">
+            <div class="col-sm-6">
+              <label class="form-label">Роль</label>
+              <select name="role" class="form-select">
+                {% for code, label in ROLES.items() %}
+                  <option value="{{ code }}" {% if user.role == code %}selected{% endif %}>{{ label }}</option>
+                {% endfor %}
+              </select>
+            </div>
+            <div class="col-sm-6">
+              <label class="form-label">Организация</label>
+              <select name="organization_id" class="form-select">
+                <option value="">— не привязан —</option>
+                {% for o in orgs %}
+                  <option value="{{ o.id }}" {% if user.organization_id == o.id %}selected{% endif %}>{{ o.name }}</option>
+                {% endfor %}
+              </select>
+            </div>
+          </div>
+          <div class="d-flex gap-2">
+            <button type="submit" class="btn btn-primary"><i class="bi bi-check-lg me-1"></i>Сохранить</button>
+            <a href="{{ url_for('users_list') }}" class="btn btn-outline-secondary">Отмена</a>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

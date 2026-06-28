@@ -11,7 +11,9 @@
 <div class="d-flex justify-content-between align-items-center mb-3">
   <h4 class="fw-bold mb-0">{{ sub.name }}</h4>
   <div>
-    {% if sub.status == 'not_started' %}<span class="badge badge-pending">Не начат</span>
+    {% if sub.plan_end_date and sub.plan_end_date < now_date and sub.status not in ('done', 'closed', 'approved') %}
+      <span class="badge badge-overdue">Просрочен</span>
+    {% elif sub.status == 'not_started' %}<span class="badge badge-pending">Не начат</span>
     {% elif sub.status == 'in_progress' %}<span class="badge badge-progress">В работе</span>
     {% elif sub.status == 'done' %}<span class="badge badge-done">Выполнен</span>
     {% elif sub.status == 'closed' %}<span class="badge badge-rework">Закрыт</span>
@@ -30,21 +32,13 @@
         <div style="font-size:14px">{{ sub.description }}</div>
       </div>
       {% endif %}
-      <div class="col-sm-3">
+      <div class="col-sm-6">
         <div class="text-muted" style="font-size:12px">Объём</div>
         <div style="font-size:14px">{{ '{:,.2f}'.format(sub.volume).replace(',', ' ') if sub.volume is not none else '—' }} {{ sub.unit or '' }}</div>
       </div>
-      <div class="col-sm-3">
-        <div class="text-muted" style="font-size:12px">Расценка</div>
-        <div style="font-size:14px">{{ '{:,.2f}'.format(sub.unit_price).replace(',', ' ') if sub.unit_price is not none else '—' }} ₽</div>
-      </div>
-      <div class="col-sm-3">
-        <div class="text-muted" style="font-size:12px">Сумма</div>
-        <div style="font-size:15px;font-weight:600;color:var(--primary)">{{ '{:,.2f}'.format(sub.total_price).replace(',', ' ') if sub.total_price is not none else '—' }} ₽</div>
-      </div>
-      <div class="col-sm-3">
+      <div class="col-sm-6">
         <div class="text-muted" style="font-size:12px">Срок</div>
-        <div style="font-size:14px">{{ sub.plan_end_date or '—' }}</div>
+        <div style="font-size:14px{% if sub.plan_end_date and sub.plan_end_date < now_date and sub.status not in ('done', 'closed', 'approved') %};color:var(--danger);font-weight:600{% endif %}">{{ sub.plan_end_date or '—' }}{% if sub.plan_end_date and sub.plan_end_date < now_date and sub.status not in ('done', 'closed', 'approved') %} <span class="badge badge-overdue" style="font-size:10px">Просрочен</span>{% endif %}</div>
       </div>
       {% if sub.completed_at %}
       <div class="col-sm-3">

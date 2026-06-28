@@ -23,6 +23,7 @@
             {% if current_user.role != 'contractor' %}<th>Подрядчик</th>{% endif %}
             <th>Статус</th>
             <th>Дата</th>
+            {% if current_user.role == 'contractor' %}<th style="width:40px"></th>{% endif %}
           </tr>
         </thead>
         <tbody>
@@ -53,6 +54,16 @@
               {% endif %}
             </td>
             <td class="text-muted" style="font-size:13px;white-space:nowrap">{{ p.created_at[:10] if p.created_at else '—' }}</td>
+            {% if current_user.role == 'contractor' %}
+            <td>
+              {% if p.status in ('draft', 'returned') %}
+                <form method="post" action="{{ url_for('package_delete', package_id=p.id) }}" class="d-inline"
+                      onsubmit="return confirm('Удалить пакет «{{ p.substage_name }}» и все его документы?')">
+                  <button class="btn btn-sm btn-outline-danger py-0 px-1" title="Удалить"><i class="bi bi-trash"></i></button>
+                </form>
+              {% endif %}
+            </td>
+            {% endif %}
           </tr>
           {% endfor %}
         </tbody>

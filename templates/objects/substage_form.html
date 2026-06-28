@@ -19,12 +19,12 @@
             <textarea name="description" class="form-control" rows="2">{{ sub.description if sub else '' }}</textarea>
           </div>
           <div class="row g-3 mb-3">
-            <div class="col-sm-4">
+            <div class="col-sm-6">
               <label class="form-label">Объём</label>
               <input type="number" name="volume" class="form-control" step="0.01" min="0"
                      value="{{ sub.volume if sub and sub.volume is not none else '' }}">
             </div>
-            <div class="col-sm-4">
+            <div class="col-sm-6">
               <label class="form-label">Ед. измерения</label>
               <select name="unit" class="form-select">
                 <option value="">—</option>
@@ -32,11 +32,6 @@
                   <option value="{{ u }}" {% if sub and sub.unit == u %}selected{% endif %}>{{ u }}</option>
                 {% endfor %}
               </select>
-            </div>
-            <div class="col-sm-4">
-              <label class="form-label">Расценка (₽)</label>
-              <input type="number" name="unit_price" class="form-control" step="0.01" min="0"
-                     value="{{ sub.unit_price if sub and sub.unit_price is not none else '' }}">
             </div>
           </div>
           <div class="mb-4">

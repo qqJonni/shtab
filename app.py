@@ -94,7 +94,7 @@ def create_app():
 
 
 def register_routes(app):
-    from routes import auth, notifications, dashboards, objects, defects, packages, supply, export, guest
+    from routes import auth, notifications, dashboards, objects, defects, packages, supply, export, guest, admin
     auth.register(app)
     notifications.register(app)
     dashboards.register(app)
@@ -104,6 +104,7 @@ def register_routes(app):
     supply.register(app)
     export.register(app)
     guest.register(app)
+    admin.register(app)
 
 
 def init_db():
@@ -177,7 +178,7 @@ def init_db():
         CREATE TABLE IF NOT EXISTS stage_documents (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             stage_id INTEGER NOT NULL REFERENCES construction_stages(id) ON DELETE CASCADE,
-            doc_type TEXT NOT NULL DEFAULT 'other' CHECK(doc_type IN ('contract', 'tech_spec', 'work_schedule', 'other')),
+            doc_type TEXT NOT NULL DEFAULT 'other' CHECK(doc_type IN ('contract', 'tech_spec', 'price_doc', 'work_schedule', 'other')),
             title TEXT NOT NULL,
             filename TEXT NOT NULL,
             uploaded_by INTEGER REFERENCES users(id),
@@ -400,6 +401,7 @@ def run_migrations(db):
     for col, typedef in [
         ('address', 'TEXT'), ('ogrn', 'TEXT'), ('okpo', 'TEXT'),
         ('phone', 'TEXT'), ('rep_position', 'TEXT'), ('rep_name', 'TEXT'),
+        ('email', 'TEXT'),
     ]:
         if not _col_exists('organizations', col):
             db.execute(f'ALTER TABLE organizations ADD COLUMN {col} {typedef}')
@@ -425,6 +427,24 @@ def run_migrations(db):
     if not existing:
         db.execute("INSERT INTO settings (key, value) VALUES ('vat_rate', '20')")
 
+    # M6-T: добавить price_doc в stage_documents.doc_type CHECK
+    check_sql = db.execute("SELECT sql FROM sqlite_master WHERE type='table' AND name='stage_documents'").fetchone()
+    if check_sql and 'price_doc' not in (check_sql[0] or ''):
+        db.executescript('''
+            CREATE TABLE IF NOT EXISTS stage_documents_new (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                stage_id INTEGER NOT NULL REFERENCES construction_stages(id) ON DELETE CASCADE,
+                doc_type TEXT NOT NULL DEFAULT 'other' CHECK(doc_type IN ('contract', 'tech_spec', 'price_doc', 'work_schedule', 'other')),
+                title TEXT NOT NULL,
+                filename TEXT NOT NULL,
+                uploaded_by INTEGER REFERENCES users(id),
+                uploaded_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+            INSERT INTO stage_documents_new SELECT * FROM stage_documents;
+            DROP TABLE stage_documents;
+            ALTER TABLE stage_documents_new RENAME TO stage_documents;
+        ''')
+
     db.commit()
 
 
@@ -435,4 +455,4 @@ app = create_app()
 
 if __name__ == '__main__':
     init_db()
-    app.run(host='0.0.0.0', port=8080, debug=True, use_reloader=False)
+    app.run(host='0.0.0.0', port=8080, debug=False, threaded=True)

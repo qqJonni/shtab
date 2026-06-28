@@ -184,10 +184,46 @@ def register(app):
         if not doc or not doc['filename']:
             abort(404)
         folder = os.path.join(config.PACKAGES_FOLDER, str(package_id))
+        ext = doc['filename'].rsplit('.', 1)[-1] if '.' in doc['filename'] else ''
+        dl_name = doc['title']
+        if ext and not dl_name.lower().endswith('.' + ext.lower()):
+            dl_name = f"{dl_name}.{ext}"
         return send_from_directory(folder, doc['filename'], as_attachment=True,
-                                   download_name=doc['title'])
+                                   download_name=dl_name)
 
     # ═══ Конструктор документов ═══
+
+    @app.route('/packages/<int:package_id>/delete', methods=['POST'])
+    @login_required
+    def package_delete(package_id):
+        pkg = query_db('SELECT * FROM doc_packages WHERE id = ?', (package_id,), one=True)
+        if not pkg:
+            abort(404)
+        full = _get_package_full(package_id)
+        if not _is_package_contractor(full):
+            abort(403)
+        if pkg['status'] not in ('draft', 'returned'):
+            flash('Можно удалить только черновик или возвращённый пакет.', 'danger')
+            return redirect(url_for('package_detail', package_id=package_id))
+
+        substage_id = pkg['substage_id']
+        db = get_db()
+        # Удалить файлы документов
+        docs = query_db('SELECT filename FROM package_documents WHERE package_id = ?', (package_id,))
+        import shutil
+        pkg_folder = os.path.join(config.PACKAGES_FOLDER, str(package_id))
+        if os.path.isdir(pkg_folder):
+            shutil.rmtree(pkg_folder)
+        db.execute('DELETE FROM package_documents WHERE package_id = ?', (package_id,))
+        db.execute('DELETE FROM approval_steps WHERE package_id = ?', (package_id,))
+        db.execute('DELETE FROM doc_packages WHERE id = ?', (package_id,))
+        # Вернуть подэтап в done если был closed
+        sub = query_db('SELECT status FROM substages WHERE id = ?', (substage_id,), one=True)
+        if sub and sub['status'] == 'closed':
+            db.execute("UPDATE substages SET status = 'done' WHERE id = ?", (substage_id,))
+        db.commit()
+        flash('Пакет документов удалён.', 'success')
+        return redirect(url_for('packages_list'))
 
     SERVICE_ONLINE_LINKS = {
         'ks2': 'https://service-online.su/forms/ks-2/',
@@ -276,9 +312,10 @@ def register(app):
                 return redirect(url_for('package_create_doc', package_id=package_id, doc_type=doc_type))
 
             title = data.get('title', DOC_TYPE_LABELS.get(doc_type, doc_type))
+            output_fmt = request.form.get('output_format', 'xlsx')
 
             from doc_generator import generate_document
-            filename = generate_document(doc_type, data, package_id)
+            filename = generate_document(doc_type, data, package_id, fmt=output_fmt)
 
             db = get_db()
             db.execute(

@@ -2,7 +2,10 @@
 {% block title %}Организации — ШТАБ{% endblock %}
 {% block topbar_title %}Организации{% endblock %}
 {% block content %}
-<h4 class="fw-bold mb-3">Организации</h4>
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h4 class="fw-bold mb-0">Организации</h4>
+  <a href="{{ url_for('organization_add') }}" class="btn btn-primary"><i class="bi bi-plus-lg me-1"></i>Добавить организацию</a>
+</div>
 <div class="card">
   <div class="table-responsive">
     <table class="table table-hover mb-0">
@@ -23,7 +26,12 @@
           <td class="text-muted" style="font-size:13px">{{ o.inn or '—' }}</td>
           <td style="font-size:13px">{{ o.rep_name or '—' }}</td>
           <td class="text-end">
-            <a href="{{ url_for('organization_edit', org_id=o.id) }}" class="btn btn-sm btn-outline-primary py-0 px-1"><i class="bi bi-pencil"></i></a>
+            <div class="d-inline-flex gap-1">
+              <a href="{{ url_for('organization_edit', org_id=o.id) }}" class="btn btn-sm btn-outline-primary py-0 px-1"><i class="bi bi-pencil"></i></a>
+              {% if current_user.role in ('admin', 'manager') %}
+                <a href="{{ url_for('organization_delete', org_id=o.id) }}" class="btn btn-sm btn-outline-danger py-0 px-1" title="Удалить"><i class="bi bi-trash"></i></a>
+              {% endif %}
+            </div>
           </td>
         </tr>
         {% endfor %}

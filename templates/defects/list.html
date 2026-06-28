@@ -50,15 +50,6 @@
         </select>
       </div>
       <div class="col-sm-2">
-        <label class="form-label">Тип</label>
-        <select name="type_id" class="form-select form-select-sm">
-          <option value="">Все</option>
-          {% for t in types %}
-            <option value="{{ t.id }}" {% if f_type|string == t.id|string %}selected{% endif %}>{{ t.name }}</option>
-          {% endfor %}
-        </select>
-      </div>
-      <div class="col-sm-2">
         <label class="form-label">Статус</label>
         <select name="status" class="form-select form-select-sm">
           <option value="">Все</option>
@@ -92,7 +83,6 @@
             <th style="width:40px">#</th>
             <th>Замечание</th>
             <th>Объект / Этап</th>
-            <th>Тип</th>
             <th>Приоритет</th>
             <th>Срок</th>
             <th>Статус</th>
@@ -112,7 +102,6 @@
               <div>{{ d.object_name }}</div>
               <div class="text-muted">{{ d.stage_name }}</div>
             </td>
-            <td><span class="badge" style="background:#F1F5F9;color:#475569">{{ d.type_name or '—' }}</span></td>
             <td>
               {% if d.priority == 'critical' %}<span class="badge badge-overdue">Критический</span>
               {% elif d.priority == 'high' %}<span class="badge badge-rework">Высокий</span>
