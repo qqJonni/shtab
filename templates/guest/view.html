@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{ obj.name }} — ШТАБ</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet">
+  <link href="{{ url_for('static', filename='css/crm.css') }}" rel="stylesheet">
+</head>
+<body>
+<div style="min-height:100vh;background:var(--bg)">
+  <div class="container py-4" style="max-width:900px">
+
+    <div class="text-center mb-4">
+      <div class="d-inline-flex align-items-center gap-2 mb-2">
+        <span class="logo-icon" style="width:34px;height:34px;border-radius:8px;background:var(--primary);display:inline-flex;align-items:center;justify-content:center;color:#fff;font-size:16px"><i class="bi bi-building"></i></span>
+        <span class="fw-bold" style="font-size:15px;color:var(--text-main)">ШТАБ</span>
+      </div>
+      <h3 class="fw-bold mb-1">{{ obj.name }}</h3>
+      {% if obj.address %}
+        <p class="text-muted mb-0"><i class="bi bi-geo-alt me-1"></i>{{ obj.address }}</p>
+      {% endif %}
+    </div>
+
+    {# Общий прогресс #}
+    <div class="card mb-4">
+      <div class="card-body p-4">
+        <div class="row g-3 align-items-center">
+          <div class="col-sm-4 text-center">
+            <div style="font-size:48px;font-weight:700;color:var(--primary)">{{ progress }}%</div>
+            <div class="text-muted" style="font-size:13px">Общий прогресс</div>
+          </div>
+          <div class="col-sm-8">
+            <div class="progress mb-2" style="height:10px !important">
+              <div class="progress-bar" style="width:{{ progress }}%"></div>
+            </div>
+            <div class="d-flex justify-content-between" style="font-size:12px;color:var(--text-secondary)">
+              <span>Подэтапов выполнено: {{ total_done }}/{{ total_subs }}</span>
+              <span>Этапов: {{ stages|length }}</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    {# Замечания (сводка) #}
+    {% if defects_open > 0 or defects_closed > 0 %}
+    <div class="row g-3 mb-4">
+      <div class="col-6">
+        <div class="stat-card">
+          <div class="stat-card-icon" style="background:rgba(239,68,68,0.08);color:var(--danger)"><i class="bi bi-exclamation-triangle"></i></div>
+          <div><div class="stat-card-value">{{ defects_open }}</div><div class="stat-card-label">Открытых замечаний</div></div>
+        </div>
+      </div>
+      <div class="col-6">
+        <div class="stat-card">
+          <div class="stat-card-icon" style="background:rgba(16,185,129,0.08);color:var(--success)"><i class="bi bi-check-circle"></i></div>
+          <div><div class="stat-card-value">{{ defects_closed }}</div><div class="stat-card-label">Устранено</div></div>
+        </div>
+      </div>
+    </div>
+    {% endif %}
+
+    {# Этапы #}
+    <h5 class="fw-bold mb-3">Этапы строительства</h5>
+    {% if not stages %}
+      <div class="card">
+        <div class="card-body text-center py-5 text-muted">Этапы пока не добавлены.</div>
+      </div>
+    {% else %}
+      <div class="card">
+        <div class="table-responsive">
+          <table class="table table-hover mb-0">
+            <thead>
+              <tr>
+                <th style="width:40px">#</th>
+                <th>Этап</th>
+                <th>Подрядчик</th>
+                <th>Сроки</th>
+                <th style="min-width:100px">Прогресс</th>
+                <th>Статус</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for s in stages %}
+              <tr>
+                <td class="text-muted">{{ s.order_num }}</td>
+                <td class="fw-medium">{{ s.name }}</td>
+                <td>
+                  {% if s.contractor_name %}<span class="badge badge-done">{{ s.contractor_name }}</span>
+                  {% else %}<span class="badge badge-rework">Поиск</span>{% endif %}
+                </td>
+                <td style="font-size:13px;white-space:nowrap">
+                  {% if s.plan_start_date %}{{ s.plan_start_date }}{% endif %}
+                  {% if s.plan_start_date and s.plan_end_date %} — {% endif %}
+                  {% if s.plan_end_date %}{{ s.plan_end_date }}{% endif %}
+                  {% if not s.plan_start_date and not s.plan_end_date %}—{% endif %}
+                </td>
+                <td>
+                  {% if s.sub_total > 0 %}
+                    {% set pct = (s.sub_done / s.sub_total * 100)|round %}
+                    <div class="d-flex align-items-center gap-2">
+                      <div class="progress flex-grow-1"><div class="progress-bar" style="width:{{ pct }}%"></div></div>
+                      <span style="font-size:11px;white-space:nowrap">{{ s.sub_done }}/{{ s.sub_total }}</span>
+                    </div>
+                  {% else %}<span class="text-muted" style="font-size:12px">—</span>{% endif %}
+                </td>
+                <td>
+                  {% if s.status == 'planned' %}<span class="badge badge-pending">Планируется</span>
+                  {% elif s.status == 'in_progress' %}<span class="badge badge-progress">В работе</span>
+                  {% elif s.status == 'done' %}<span class="badge badge-done">Завершён</span>
+                  {% elif s.status == 'suspended' %}<span class="badge badge-rework">Приостановлен</span>
+                  {% endif %}
+                </td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    {% endif %}
+
+    <div class="text-center mt-4">
+      <p class="text-muted" style="font-size:12px">Данные предоставлены системой ШТАБ · Просмотр по гостевой ссылке</p>
+    </div>
+  </div>
+</div>
+</body>
+</html>

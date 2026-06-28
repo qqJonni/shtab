@@ -109,7 +109,40 @@ def register(app):
             'WHERE cs.object_id = ? ORDER BY cs.order_num',
             (obj_id,),
         )
-        return render_template('objects/detail.html', obj=obj, stages=stages)
+        stages_list = [dict(s) for s in stages]
+        total_subs = 0
+        total_done = 0
+        for s in stages_list:
+            subs = query_db('SELECT status FROM substages WHERE stage_id = ?', (s['id'],))
+            s['sub_total'] = len(subs)
+            s['sub_done'] = sum(1 for sub in subs if sub['status'] in ('done', 'closed', 'approved'))
+            total_subs += s['sub_total']
+            total_done += s['sub_done']
+        progress = round(total_done / total_subs * 100) if total_subs > 0 else 0
+
+        defects_open = query_db(
+            "SELECT COUNT(*) as c FROM defects WHERE object_id=? AND status NOT IN ('closed','verified')",
+            (obj_id,), one=True)['c']
+        defects_closed = query_db(
+            "SELECT COUNT(*) as c FROM defects WHERE object_id=? AND status IN ('closed','verified')",
+            (obj_id,), one=True)['c']
+        packages_active = query_db(
+            "SELECT COUNT(*) as c FROM doc_packages dp "
+            "JOIN substages ss ON dp.substage_id=ss.id "
+            "JOIN construction_stages cs ON ss.stage_id=cs.id "
+            "WHERE cs.object_id=? AND dp.status IN ('in_review','returned')", (obj_id,), one=True)['c']
+        mr_active = query_db(
+            "SELECT COUNT(*) as c FROM material_requests mr "
+            "JOIN construction_stages cs ON mr.stage_id=cs.id "
+            "WHERE cs.object_id=? AND mr.status NOT IN ('completed')", (obj_id,), one=True)['c']
+
+        guest_token = query_db('SELECT token FROM guest_tokens WHERE object_id=?', (obj_id,), one=True)
+
+        return render_template('objects/detail.html', obj=obj, stages=stages_list,
+                               progress=progress, total_subs=total_subs, total_done=total_done,
+                               defects_open=defects_open, defects_closed=defects_closed,
+                               packages_active=packages_active, mr_active=mr_active,
+                               guest_token=guest_token)
 
     @app.route('/objects/<int:obj_id>/edit', methods=['GET', 'POST'])
     @login_required

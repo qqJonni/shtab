@@ -32,11 +32,11 @@
     {'label': 'Замечания',     'icon': 'bi-exclamation-triangle', 'url': url_for('defects_list')},
     {'section': 'Отчётность'},
     {'label': 'Отчёты',        'icon': 'bi-bar-chart-line','url': url_for('dashboard')},
-    {'label': 'Экспорт',       'icon': 'bi-file-earmark-excel', 'url': url_for('dashboard')},
+    {'label': 'Экспорт',       'icon': 'bi-file-earmark-excel', 'url': url_for('export_summary')},
     {'section': 'Управление'},
     {'label': 'Пользователи',  'icon': 'bi-people',        'url': url_for('dashboard')},
     {'label': 'Организации',   'icon': 'bi-buildings',     'url': url_for('organizations_list')},
-    {'label': 'Гостевые ссылки','icon': 'bi-link-45deg',   'url': url_for('dashboard')},
+    {'label': 'Гостевые ссылки','icon': 'bi-link-45deg',   'url': url_for('guest_tokens_list')},
   ],
   'pto': [
     {'section': 'Основное'},

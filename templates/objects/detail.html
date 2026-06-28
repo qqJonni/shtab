@@ -23,49 +23,73 @@
   </div>
 </div>
 
-{# Информация об объекте #}
+{# Обзор объекта #}
+<div class="row g-3 mb-4">
+  <div class="col-6 col-lg-3">
+    <div class="stat-card">
+      <div class="stat-card-icon" style="background:rgba(59,130,246,0.08);color:var(--primary)"><i class="bi bi-layers"></i></div>
+      <div><div class="stat-card-value">{{ stages|length }}</div><div class="stat-card-label">Этапов</div></div>
+    </div>
+  </div>
+  <div class="col-6 col-lg-3">
+    <div class="stat-card">
+      <div><div class="stat-card-value" style="color:var(--primary)">{{ progress }}%</div><div class="stat-card-label">Готовность ({{ total_done }}/{{ total_subs }})</div></div>
+    </div>
+  </div>
+  <div class="col-6 col-lg-3">
+    <a href="{{ url_for('defects_list', object_id=obj.id) }}" class="text-decoration-none">
+      <div class="stat-card">
+        <div class="stat-card-icon" style="background:rgba(239,68,68,0.08);color:var(--danger)"><i class="bi bi-exclamation-triangle"></i></div>
+        <div><div class="stat-card-value">{{ defects_open }}</div><div class="stat-card-label">Замечаний</div></div>
+      </div>
+    </a>
+  </div>
+  <div class="col-6 col-lg-3">
+    <div class="stat-card">
+      <div class="stat-card-icon" style="background:rgba(245,158,11,0.08);color:var(--warning)"><i class="bi bi-hourglass-split"></i></div>
+      <div><div class="stat-card-value">{{ packages_active }}</div><div class="stat-card-label">Пакетов в работе</div></div>
+    </div>
+  </div>
+</div>
+
+{# Прогресс по этапам #}
+{% if total_subs > 0 %}
 <div class="row g-3 mb-4">
   <div class="col-lg-8">
-    <div class="card">
+    <div class="card h-100">
       <div class="card-body p-4">
-        <div class="row g-3">
-          <div class="col-sm-4">
-            <div class="text-muted" style="font-size:12px">Статус</div>
-            {% if obj.status == 'active' %}
-              <span class="badge badge-done">Активный</span>
-            {% else %}
-              <span class="badge badge-pending">Архив</span>
-            {% endif %}
-          </div>
-          {% if obj.type %}
-          <div class="col-sm-4">
-            <div class="text-muted" style="font-size:12px">Тип</div>
-            <div class="fw-medium" style="font-size:14px">{{ obj.type }}</div>
-          </div>
-          {% endif %}
-          <div class="col-sm-4">
-            <div class="text-muted" style="font-size:12px">Создан</div>
-            <div style="font-size:14px">{{ obj.created_at[:10] if obj.created_at else '—' }}</div>
-          </div>
-          {% if obj.creator_name %}
-          <div class="col-sm-4">
-            <div class="text-muted" style="font-size:12px">Автор</div>
-            <div style="font-size:14px">{{ obj.creator_name }}</div>
-          </div>
-          {% endif %}
-        </div>
+        <h6 class="fw-bold mb-3" style="font-size:13px">Прогресс по этапам</h6>
+        <canvas id="chartStageProgress" height="160"></canvas>
       </div>
     </div>
   </div>
   <div class="col-lg-4">
     <div class="card h-100">
-      <div class="card-body p-4 text-center">
-        <div class="stat-card-value">{{ stages|length }}</div>
-        <div class="stat-card-label">{{ 'этап' if stages|length == 1 else 'этапов' }}</div>
+      <div class="card-body p-4">
+        <h6 class="fw-bold mb-3" style="font-size:13px">Сводка</h6>
+        <div class="mb-2 d-flex justify-content-between"><span class="text-muted" style="font-size:13px">Замечания устранено</span><span class="fw-medium">{{ defects_closed }}</span></div>
+        <div class="mb-2 d-flex justify-content-between"><span class="text-muted" style="font-size:13px">Заявки на материал</span><span class="fw-medium">{{ mr_active }}</span></div>
+        {% if guest_token and current_user.role in ('manager', 'admin') %}
+        <div class="mt-3 pt-3" style="border-top:1px solid var(--border)">
+          <div class="text-muted mb-1" style="font-size:11px">Гостевая ссылка</div>
+          <div class="input-group input-group-sm">
+            <input type="text" class="form-control" value="{{ request.host_url }}guest/{{ guest_token.token }}" readonly id="guestLink" style="font-size:11px">
+            <button class="btn btn-outline-secondary" onclick="navigator.clipboard.writeText(document.getElementById('guestLink').value);this.innerHTML='<i class=\'bi bi-check\'></i>'"><i class="bi bi-clipboard"></i></button>
+          </div>
+        </div>
+        {% elif not guest_token and current_user.role in ('manager', 'admin') %}
+        <div class="mt-3 pt-3" style="border-top:1px solid var(--border)">
+          <form method="post" action="{{ url_for('guest_token_create') }}">
+            <input type="hidden" name="object_id" value="{{ obj.id }}">
+            <button class="btn btn-sm btn-outline-primary w-100"><i class="bi bi-link-45deg me-1"></i>Создать гостевую ссылку</button>
+          </form>
+        </div>
+        {% endif %}
       </div>
     </div>
   </div>
 </div>
+{% endif %}
 
 {# ═══ Этапы строительства ═══ #}
 <div class="d-flex justify-content-between align-items-center mb-3">
@@ -158,5 +182,29 @@
       </table>
     </div>
   </div>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+{% if total_subs > 0 %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+<script>
+Chart.defaults.font.family = "'Inter', sans-serif";
+Chart.defaults.font.size = 11;
+new Chart(document.getElementById('chartStageProgress'), {
+  type: 'bar',
+  data: {
+    labels: [{% for s in stages %}'{{ s.name }}'{% if not loop.last %},{% endif %}{% endfor %}],
+    datasets: [
+      { label: 'Выполнено', data: [{% for s in stages %}{{ s.sub_done }}{% if not loop.last %},{% endif %}{% endfor %}], backgroundColor: '#10B981' },
+      { label: 'Всего', data: [{% for s in stages %}{{ s.sub_total - s.sub_done }}{% if not loop.last %},{% endif %}{% endfor %}], backgroundColor: '#E2E8F0' },
+    ]
+  },
+  options: {
+    plugins: { legend: { position: 'bottom' } },
+    scales: { x: { stacked: true }, y: { stacked: true, beginAtZero: true, ticks: { stepSize: 1 } } }
+  }
+});
+</script>
 {% endif %}
 {% endblock %}

@@ -104,24 +104,38 @@ def register(app):
     def dashboard_admin():
         if current_user.role != 'admin':
             abort(403)
-        from db import query_db
-        dc = _defect_counts_all()
+        from reports import summary_cards, chart_substage_statuses, chart_schedule_health, \
+            chart_defects_priority, chart_packages_pipeline, objects_summary
+        sc = summary_cards()
+        cs = chart_substage_statuses()
+        sh = chart_schedule_health()
+        dp = chart_defects_priority()
+        pp = chart_packages_pipeline()
+        objs = objects_summary()
         pc = _package_counts()
         import config
-        return render_template('dashboards/admin.html',
-                               role_label=config.ROLES.get('admin'), dc=dc, pc=pc)
+        return render_template('dashboards/manager.html',
+                               role_label=config.ROLES.get('admin'),
+                               sc=sc, cs=cs, sh=sh, dp=dp, pp=pp, pc=pc, objs=objs)
 
     @app.route('/dashboard/manager')
     @login_required
     def dashboard_manager():
         if current_user.role != 'manager' and current_user.role != 'admin':
             abort(403)
-        from db import query_db
-        dc = _defect_counts_all()
+        from reports import summary_cards, chart_substage_statuses, chart_schedule_health, \
+            chart_defects_priority, chart_packages_pipeline, objects_summary
+        sc = summary_cards()
+        cs = chart_substage_statuses()
+        sh = chart_schedule_health()
+        dp = chart_defects_priority()
+        pp = chart_packages_pipeline()
+        objs = objects_summary()
         pc = _package_counts('manager')
         import config
         return render_template('dashboards/manager.html',
-                               role_label=config.ROLES.get('manager'), dc=dc, pc=pc)
+                               role_label=config.ROLES.get('manager'),
+                               sc=sc, cs=cs, sh=sh, dp=dp, pp=pp, pc=pc, objs=objs)
 
     @app.route('/dashboard/pto')
     @login_required

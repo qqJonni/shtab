@@ -94,7 +94,7 @@ def create_app():
 
 
 def register_routes(app):
-    from routes import auth, notifications, dashboards, objects, defects, packages, supply
+    from routes import auth, notifications, dashboards, objects, defects, packages, supply, export, guest
     auth.register(app)
     notifications.register(app)
     dashboards.register(app)
@@ -102,6 +102,8 @@ def register_routes(app):
     defects.register(app)
     packages.register(app)
     supply.register(app)
+    export.register(app)
+    guest.register(app)
 
 
 def init_db():
