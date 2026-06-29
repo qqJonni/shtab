@@ -271,6 +271,76 @@
 <style>
 @keyframes slideIn { from { transform: translateX(100%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
 </style>
+
+<script>
+// Speech-to-Text (Web Speech API) — диктовка
+(function() {
+  var SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  var btns = document.querySelectorAll('.voice-dictate-btn');
+  if (!SR || !btns.length) return;
+
+  btns.forEach(function(btn) { btn.style.display = ''; });
+
+  btns.forEach(function(btn) {
+    var active = false;
+    var recognition = null;
+
+    btn.addEventListener('click', function() {
+      var targetId = btn.dataset.target;
+      var field = document.getElementById(targetId);
+      if (!field) return;
+
+      if (active) {
+        recognition.stop();
+        return;
+      }
+
+      recognition = new SR();
+      recognition.lang = 'ru-RU';
+      recognition.continuous = true;
+      recognition.interimResults = true;
+
+      var finalText = field.value;
+
+      recognition.onstart = function() {
+        active = true;
+        btn.classList.remove('btn-outline-secondary');
+        btn.classList.add('btn-danger');
+        btn.innerHTML = '<i class="bi bi-mic-fill"></i>';
+      };
+
+      recognition.onresult = function(e) {
+        var interim = '';
+        for (var i = e.resultIndex; i < e.results.length; i++) {
+          if (e.results[i].isFinal) {
+            finalText += (finalText ? ' ' : '') + e.results[i][0].transcript;
+          } else {
+            interim += e.results[i][0].transcript;
+          }
+        }
+        field.value = finalText + (interim ? ' ' + interim : '');
+      };
+
+      recognition.onend = function() {
+        active = false;
+        btn.classList.remove('btn-danger');
+        btn.classList.add('btn-outline-secondary');
+        btn.innerHTML = '<i class="bi bi-mic"></i>';
+        field.value = finalText;
+      };
+
+      recognition.onerror = function() {
+        active = false;
+        btn.classList.remove('btn-danger');
+        btn.classList.add('btn-outline-secondary');
+        btn.innerHTML = '<i class="bi bi-mic"></i>';
+      };
+
+      recognition.start();
+    });
+  });
+})();
+</script>
 {% endif %}
 
 {% block scripts %}{% endblock %}

@@ -36,8 +36,13 @@
             <input type="text" name="title" class="form-control" required placeholder="Краткое описание замечания">
           </div>
           <div class="mb-3">
-            <label class="form-label">Описание</label>
-            <textarea name="description" class="form-control" rows="3" placeholder="Подробности…"></textarea>
+            <div class="d-flex justify-content-between align-items-center">
+              <label class="form-label mb-0">Описание</label>
+              <button type="button" class="btn btn-sm btn-outline-secondary voice-dictate-btn" data-target="descriptionField" style="display:none" title="Диктовка">
+                <i class="bi bi-mic"></i>
+              </button>
+            </div>
+            <textarea name="description" id="descriptionField" class="form-control mt-1" rows="3" placeholder="Подробности…"></textarea>
           </div>
           <div class="row g-3 mb-3">
             <div class="col-sm-6">

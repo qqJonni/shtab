@@ -2,7 +2,7 @@ from flask import render_template, redirect, url_for, request, flash, abort, jso
 from flask_login import login_required, current_user
 
 from db import query_db, execute_db, get_db, notify
-from helpers import role_required, save_defect_photo
+from helpers import role_required, save_defect_photo, save_defect_audio
 
 DEFECT_VIEWERS = ('manager', 'admin', 'pto', 'inspector', 'foreman')
 DEFECT_CREATORS = ('inspector', 'foreman', 'admin')
@@ -230,11 +230,55 @@ def register(app):
         if d['plan_id']:
             plan = query_db('SELECT * FROM object_plans WHERE id = ?', (d['plan_id'],), one=True)
 
+        audio = query_db(
+            'SELECT da.*, u.full_name as uploader_name FROM defect_audio da '
+            'LEFT JOIN users u ON da.uploaded_by = u.id '
+            'WHERE da.defect_id = ? ORDER BY da.uploaded_at', (defect_id,))
+
         return render_template('defects/detail.html', d=d,
                                photos_before=photos_before, photos_after=photos_after,
-                               photos_all=photos_all,
+                               photos_all=photos_all, audio=audio,
                                history=history, plan=plan,
                                status_labels=STATUS_LABELS, priority_labels=PRIORITY_LABELS)
+
+    # ═══ Голосовые заметки ═══
+
+    @app.route('/defects/<int:defect_id>/audio/upload', methods=['POST'])
+    @login_required
+    def defect_audio_upload(defect_id):
+        d = query_db('SELECT * FROM defects WHERE id = ?', (defect_id,), one=True)
+        if not d or not _can_view_defect(d):
+            abort(403)
+        file = request.files.get('audio')
+        if not file or not file.filename:
+            flash('Файл не выбран.', 'danger')
+            return redirect(url_for('defect_detail', defect_id=defect_id))
+        filename = save_defect_audio(file, defect_id)
+        if not filename:
+            flash('Недопустимый формат аудио.', 'danger')
+            return redirect(url_for('defect_detail', defect_id=defect_id))
+        execute_db('INSERT INTO defect_audio (defect_id, filename, uploaded_by) VALUES (?, ?, ?)',
+                   (defect_id, filename, current_user.id))
+        flash('Голосовая заметка добавлена.', 'success')
+        return redirect(url_for('defect_detail', defect_id=defect_id))
+
+    @app.route('/defects/<int:defect_id>/audio/<int:audio_id>/delete', methods=['POST'])
+    @login_required
+    def defect_audio_delete(defect_id, audio_id):
+        import os
+        d = query_db('SELECT * FROM defects WHERE id = ?', (defect_id,), one=True)
+        a = query_db('SELECT * FROM defect_audio WHERE id = ? AND defect_id = ?', (audio_id, defect_id), one=True)
+        if not d or not a:
+            abort(404)
+        if a['uploaded_by'] != current_user.id and current_user.role not in ('manager', 'admin'):
+            abort(403)
+        import config as cfg
+        filepath = os.path.join(cfg.DEFECTS_FOLDER, str(defect_id), a['filename'])
+        if os.path.exists(filepath):
+            os.remove(filepath)
+        execute_db('DELETE FROM defect_audio WHERE id = ?', (audio_id,))
+        flash('Голосовая заметка удалена.', 'success')
+        return redirect(url_for('defect_detail', defect_id=defect_id))
 
     # ═══ Действия с замечанием ═══
 

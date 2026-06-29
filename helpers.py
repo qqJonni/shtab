@@ -9,6 +9,7 @@ import config
 
 ALLOWED_IMG = {'png', 'jpg', 'jpeg', 'gif', 'webp'}
 ALLOWED_VIDEO = {'mp4', 'mov', 'avi', 'mkv', 'webm'}
+ALLOWED_AUDIO = {'webm', 'ogg', 'mp3', 'wav', 'm4a'}
 ALLOWED_DOC = {'pdf', 'doc', 'docx', 'xls', 'xlsx', 'zip', 'rar'}
 
 
@@ -72,6 +73,11 @@ def save_plan_file(file, object_id):
 def save_defect_photo(file, defect_id):
     folder = os.path.join(config.DEFECTS_FOLDER, str(defect_id))
     return _save_file(file, folder, ALLOWED_IMG | ALLOWED_VIDEO)
+
+
+def save_defect_audio(file, defect_id):
+    folder = os.path.join(config.DEFECTS_FOLDER, str(defect_id))
+    return _save_file(file, folder, ALLOWED_AUDIO)
 
 
 def save_package_document(file, package_id):

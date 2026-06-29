@@ -172,7 +172,10 @@
         {# Комментарий — любой с доступом #}
         <form method="post" action="{{ url_for('defect_comment', defect_id=d.id) }}">
           <div class="mb-2">
-            <textarea name="comment" class="form-control form-control-sm" rows="2" placeholder="Комментарий…" required></textarea>
+            <div class="d-flex gap-1 align-items-start">
+              <textarea name="comment" id="commentField" class="form-control form-control-sm flex-grow-1" rows="2" placeholder="Комментарий…" required></textarea>
+              <button type="button" class="btn btn-sm btn-outline-secondary voice-dictate-btn" data-target="commentField" style="display:none" title="Диктовка"><i class="bi bi-mic"></i></button>
+            </div>
           </div>
           <button class="btn btn-outline-secondary w-100 btn-sm"><i class="bi bi-chat-dots me-1"></i>Комментарий</button>
         </form>
@@ -249,6 +252,72 @@
 </div>
 {% endif %}
 
+{# ═══ Голосовые заметки ═══ #}
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h5 class="fw-bold mb-0">Голосовые заметки</h5>
+</div>
+
+{# Записанные аудио #}
+{% if audio %}
+<div class="card mb-3">
+  <div class="card-body p-3">
+    {% for a in audio %}
+    <div class="d-flex align-items-center gap-3 {% if not loop.last %}mb-2 pb-2{% endif %}" {% if not loop.last %}style="border-bottom:1px solid var(--border)"{% endif %}>
+      <audio controls preload="metadata" style="flex:1;height:36px">
+        <source src="{{ url_for('static', filename='defects/' + d.id|string + '/' + a.filename) }}">
+      </audio>
+      <span class="text-muted" style="font-size:11px;white-space:nowrap">{{ a.uploader_name or '' }}</span>
+      {% if a.uploaded_by == current_user.id or current_user.role in ('manager', 'admin') %}
+        <form method="post" action="{{ url_for('defect_audio_delete', defect_id=d.id, audio_id=a.id) }}" class="d-inline"
+              onsubmit="return confirm('Удалить заметку?')">
+          <button class="btn btn-sm btn-outline-danger py-0 px-1"><i class="bi bi-trash"></i></button>
+        </form>
+      {% endif %}
+    </div>
+    {% endfor %}
+  </div>
+</div>
+{% endif %}
+
+{# Запись и загрузка #}
+<div class="card mb-4">
+  <div class="card-body p-3">
+    <div class="row g-2">
+      {# Запись через микрофон #}
+      <div class="col-sm-6">
+        <div id="recorderBlock">
+          <div class="d-flex gap-2 align-items-center">
+            <button type="button" id="btnRecord" class="btn btn-sm btn-outline-danger" onclick="toggleRecord()">
+              <i class="bi bi-mic me-1"></i>Записать
+            </button>
+            <span id="recStatus" class="text-muted" style="font-size:12px"></span>
+          </div>
+          <div id="recPreview" style="display:none" class="mt-2">
+            <audio id="recAudio" controls style="width:100%;height:36px"></audio>
+            <form method="post" action="{{ url_for('defect_audio_upload', defect_id=d.id) }}" enctype="multipart/form-data" id="recForm" class="mt-1">
+              <input type="file" name="audio" id="recFile" style="display:none">
+              <button type="submit" class="btn btn-sm btn-success"><i class="bi bi-check-lg me-1"></i>Сохранить запись</button>
+            </form>
+          </div>
+          <div id="recUnavailable" style="display:none" class="mt-2">
+            <small class="text-muted"><i class="bi bi-info-circle me-1"></i>Запись с микрофона доступна только по HTTPS или на localhost.</small>
+          </div>
+        </div>
+      </div>
+      {# Загрузка файла #}
+      <div class="col-sm-6">
+        <form method="post" action="{{ url_for('defect_audio_upload', defect_id=d.id) }}" enctype="multipart/form-data" class="d-flex gap-2 align-items-end">
+          <div class="flex-grow-1">
+            <label class="form-label" style="font-size:11px">Или загрузить аудиофайл</label>
+            <input type="file" name="audio" class="form-control form-control-sm" accept="audio/*">
+          </div>
+          <button type="submit" class="btn btn-sm btn-outline-primary"><i class="bi bi-upload"></i></button>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+
 {# ═══ История ═══ #}
 <h5 class="fw-bold mb-3">История</h5>
 {% if not history %}
@@ -318,4 +387,57 @@ document.addEventListener('keydown', function(e) {
 });
 </script>
 {% endif %}
+
+<script>
+var mediaRecorder = null;
+var audioChunks = [];
+var isRecording = false;
+
+function toggleRecord() {
+  if (isRecording) { stopRecord(); } else { startRecord(); }
+}
+
+function startRecord() {
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+    document.getElementById('recUnavailable').style.display = '';
+    return;
+  }
+  navigator.mediaDevices.getUserMedia({audio: true})
+    .then(function(stream) {
+      audioChunks = [];
+      mediaRecorder = new MediaRecorder(stream);
+      mediaRecorder.ondataavailable = function(e) { audioChunks.push(e.data); };
+      mediaRecorder.onstop = function() {
+        stream.getTracks().forEach(function(t) { t.stop(); });
+        var blob = new Blob(audioChunks, {type: 'audio/webm'});
+        var url = URL.createObjectURL(blob);
+        document.getElementById('recAudio').src = url;
+        document.getElementById('recPreview').style.display = '';
+        var file = new File([blob], 'voice_' + Date.now() + '.webm', {type: 'audio/webm'});
+        var dt = new DataTransfer();
+        dt.items.add(file);
+        document.getElementById('recFile').files = dt.files;
+      };
+      mediaRecorder.start();
+      isRecording = true;
+      document.getElementById('btnRecord').innerHTML = '<i class="bi bi-stop-circle me-1"></i>Стоп';
+      document.getElementById('btnRecord').classList.remove('btn-outline-danger');
+      document.getElementById('btnRecord').classList.add('btn-danger');
+      document.getElementById('recStatus').textContent = 'Запись...';
+      document.getElementById('recPreview').style.display = 'none';
+    })
+    .catch(function() {
+      document.getElementById('recUnavailable').style.display = '';
+    });
+}
+
+function stopRecord() {
+  if (mediaRecorder && mediaRecorder.state !== 'inactive') { mediaRecorder.stop(); }
+  isRecording = false;
+  document.getElementById('btnRecord').innerHTML = '<i class="bi bi-mic me-1"></i>Записать';
+  document.getElementById('btnRecord').classList.remove('btn-danger');
+  document.getElementById('btnRecord').classList.add('btn-outline-danger');
+  document.getElementById('recStatus').textContent = '';
+}
+</script>
 {% endblock %}

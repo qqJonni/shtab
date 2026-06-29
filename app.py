@@ -293,6 +293,14 @@ def init_db():
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         );
 
+        CREATE TABLE IF NOT EXISTS defect_audio (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            defect_id INTEGER NOT NULL REFERENCES defects(id) ON DELETE CASCADE,
+            filename TEXT NOT NULL,
+            uploaded_by INTEGER REFERENCES users(id),
+            uploaded_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+
         CREATE TABLE IF NOT EXISTS journal_entries (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             object_id INTEGER NOT NULL REFERENCES objects(id) ON DELETE CASCADE,
