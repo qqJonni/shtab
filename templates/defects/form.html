@@ -53,6 +53,26 @@
               <input type="date" name="due_date" class="form-control">
             </div>
           </div>
+
+          {# ═══ Указать на плане ═══ #}
+          <div class="mb-3" id="planBlock" style="display:none">
+            <label class="form-label"><i class="bi bi-pin-map me-1"></i>Указать на плане</label>
+            <select name="plan_id" id="selPlan" class="form-select form-select-sm mb-2">
+              <option value="">— без привязки к плану —</option>
+            </select>
+            <div id="planImageWrap" style="display:none;position:relative;cursor:crosshair;border-radius:8px;overflow:hidden;border:1px solid var(--border)">
+              <img id="planImage" src="" style="width:100%;display:block">
+              <div id="pinMarker" style="display:none;position:absolute;width:24px;height:24px;margin-left:-12px;margin-top:-24px;pointer-events:none">
+                <svg viewBox="0 0 24 24" width="24" height="24"><path d="M12 0C7.6 0 4 3.6 4 8c0 5.4 8 16 8 16s8-10.6 8-16c0-4.4-3.6-8-8-8zm0 12c-2.2 0-4-1.8-4-4s1.8-4 4-4 4 1.8 4 4-1.8 4-4 4z" fill="#EF4444"/></svg>
+              </div>
+            </div>
+            <input type="hidden" name="pin_x" id="pinX" value="">
+            <input type="hidden" name="pin_y" id="pinY" value="">
+            <div id="pinHint" style="display:none" class="text-muted mt-1" style="font-size:12px">
+              <i class="bi bi-info-circle me-1"></i>Нажмите на план, чтобы поставить точку замечания
+            </div>
+          </div>
+
           <div class="mb-4">
             <label class="form-label">Фото/видео «до» (можно несколько)</label>
             <input type="file" name="photos" class="form-control" accept="image/*,video/*" multiple>
@@ -75,14 +95,41 @@ document.getElementById('selObject').addEventListener('change', function() {
   var subSelect = document.getElementById('selSubstage');
   stageSelect.innerHTML = '<option value="">Загрузка...</option>';
   subSelect.innerHTML = '<option value="">— не привязан —</option>';
-  if (!this.value) { stageSelect.innerHTML = '<option value="">Сначала выберите объект</option>'; return; }
+  var planBlock = document.getElementById('planBlock');
+  var planSelect = document.getElementById('selPlan');
+  planSelect.innerHTML = '<option value="">— без привязки к плану —</option>';
+  document.getElementById('planImageWrap').style.display = 'none';
+  document.getElementById('pinMarker').style.display = 'none';
+  document.getElementById('pinX').value = '';
+  document.getElementById('pinY').value = '';
+
+  if (!this.value) {
+    stageSelect.innerHTML = '<option value="">Сначала выберите объект</option>';
+    planBlock.style.display = 'none';
+    return;
+  }
   fetch('/api/stages-by-object/' + this.value)
     .then(r => r.json())
     .then(data => {
       stageSelect.innerHTML = '<option value="">Выберите этап</option>';
       data.forEach(s => { stageSelect.innerHTML += '<option value="'+s.id+'">'+s.name+'</option>'; });
     });
+  // Load plans
+  fetch('/api/plans-by-object/' + this.value)
+    .then(r => r.json())
+    .then(data => {
+      if (data.length > 0) {
+        planBlock.style.display = '';
+        data.forEach(p => {
+          var label = p.title + (p.level_label ? ' (' + p.level_label + ')' : '');
+          planSelect.innerHTML += '<option value="'+p.id+'" data-src="/static/plans/'+p.object_id+'/'+p.filename+'">'+label+'</option>';
+        });
+      } else {
+        planBlock.style.display = 'none';
+      }
+    });
 });
+
 document.getElementById('selStage').addEventListener('change', function() {
   var subSelect = document.getElementById('selSubstage');
   subSelect.innerHTML = '<option value="">— не привязан —</option>';
@@ -93,5 +140,82 @@ document.getElementById('selStage').addEventListener('change', function() {
       data.forEach(s => { subSelect.innerHTML += '<option value="'+s.id+'">'+s.name+'</option>'; });
     });
 });
+
+// Plan selection → show image
+document.getElementById('selPlan').addEventListener('change', function() {
+  var wrap = document.getElementById('planImageWrap');
+  var img = document.getElementById('planImage');
+  var hint = document.getElementById('pinHint');
+  var marker = document.getElementById('pinMarker');
+  var opt = this.options[this.selectedIndex];
+  document.getElementById('pinX').value = '';
+  document.getElementById('pinY').value = '';
+  marker.style.display = 'none';
+
+  if (this.value && opt.dataset.src) {
+    img.src = opt.dataset.src;
+    wrap.style.display = '';
+    hint.style.display = '';
+  } else {
+    wrap.style.display = 'none';
+    hint.style.display = 'none';
+  }
+});
+
+// Click/tap on plan → place pin
+document.getElementById('planImageWrap').addEventListener('click', function(e) {
+  var rect = this.getBoundingClientRect();
+  var x = (e.clientX - rect.left) / rect.width;
+  var y = (e.clientY - rect.top) / rect.height;
+  x = Math.max(0, Math.min(1, x));
+  y = Math.max(0, Math.min(1, y));
+
+  document.getElementById('pinX').value = x.toFixed(4);
+  document.getElementById('pinY').value = y.toFixed(4);
+
+  var marker = document.getElementById('pinMarker');
+  marker.style.left = (x * 100) + '%';
+  marker.style.top = (y * 100) + '%';
+  marker.style.display = '';
+
+  document.getElementById('pinHint').innerHTML = '<i class="bi bi-check-circle me-1 text-success"></i>Точка установлена. Нажмите повторно, чтобы переместить.';
+});
+
+// Touch support
+document.getElementById('planImageWrap').addEventListener('touchend', function(e) {
+  e.preventDefault();
+  var touch = e.changedTouches[0];
+  var rect = this.getBoundingClientRect();
+  var x = (touch.clientX - rect.left) / rect.width;
+  var y = (touch.clientY - rect.top) / rect.height;
+  x = Math.max(0, Math.min(1, x));
+  y = Math.max(0, Math.min(1, y));
+
+  document.getElementById('pinX').value = x.toFixed(4);
+  document.getElementById('pinY').value = y.toFixed(4);
+
+  var marker = document.getElementById('pinMarker');
+  marker.style.left = (x * 100) + '%';
+  marker.style.top = (y * 100) + '%';
+  marker.style.display = '';
+
+  document.getElementById('pinHint').innerHTML = '<i class="bi bi-check-circle me-1 text-success"></i>Точка установлена.';
+});
+
+// Preselect object and plan from URL params
+{% if preselect_object %}
+(function() {
+  var sel = document.getElementById('selObject');
+  sel.value = '{{ preselect_object }}';
+  sel.dispatchEvent(new Event('change'));
+  {% if preselect_plan %}
+  setTimeout(function() {
+    var planSel = document.getElementById('selPlan');
+    planSel.value = '{{ preselect_plan }}';
+    planSel.dispatchEvent(new Event('change'));
+  }, 500);
+  {% endif %}
+})();
+{% endif %}
 </script>
 {% endblock %}

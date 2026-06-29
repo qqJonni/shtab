@@ -1,0 +1,136 @@
+{% extends "base.html" %}
+{% block title %}{{ plan.title }} — ШТАБ{% endblock %}
+{% block topbar_title %}План: {{ plan.title }}{% endblock %}
+{% block content %}
+<div class="mb-3">
+  <a href="{{ url_for('object_detail', obj_id=obj.id) }}" class="text-decoration-none" style="font-size:13px">
+    <i class="bi bi-arrow-left me-1"></i>{{ obj.name }}
+  </a>
+</div>
+
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <div>
+    <h4 class="fw-bold mb-0">{{ plan.title }}</h4>
+    {% if plan.level_label %}<span class="badge badge-pending">{{ plan.level_label }}</span>{% endif %}
+  </div>
+  <div class="d-flex gap-2">
+    {% if can_create %}
+      <a href="{{ url_for('defect_add') }}?object_id={{ obj.id }}&plan_id={{ plan.id }}" class="btn btn-sm btn-danger">
+        <i class="bi bi-plus-lg me-1"></i>Замечание на план
+      </a>
+    {% endif %}
+  </div>
+</div>
+
+{# Фильтр по статусу #}
+<div class="d-flex gap-2 flex-wrap mb-3">
+  <a href="{{ url_for('plan_view', plan_id=plan.id) }}" class="btn btn-sm {% if not status_filter %}btn-primary{% else %}btn-outline-secondary{% endif %}">
+    Все <span class="badge bg-light text-dark ms-1">{{ total_pins }}</span>
+  </a>
+  {% for st, label, color in [
+    ('open','Открыто','#EF4444'),('in_progress','В работе','#3B82F6'),
+    ('resolved','Устранено','#F59E0B'),('closed','Закрыто','#10B981'),
+    ('verified','Проверено','#10B981'),('rejected','Отклонено','#94A3B8')
+  ] %}
+    {% if status_counts.get(st, 0) > 0 %}
+    <a href="{{ url_for('plan_view', plan_id=plan.id, status=st) }}" class="btn btn-sm {% if status_filter == st %}btn-primary{% else %}btn-outline-secondary{% endif %}">
+      <span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:{{ color }};margin-right:4px"></span>
+      {{ label }} <span class="badge bg-light text-dark ms-1">{{ status_counts[st] }}</span>
+    </a>
+    {% endif %}
+  {% endfor %}
+</div>
+
+{# ═══ ПЛАН С ПИНАМИ ═══ #}
+<div class="card">
+  <div class="card-body p-2">
+    <div id="planContainer" style="position:relative;cursor:default;user-select:none">
+      <img src="{{ url_for('static', filename='plans/' + obj.id|string + '/' + plan.filename) }}"
+           style="width:100%;display:block;border-radius:6px" id="planImg">
+
+      {% for pin in pins %}
+      {% set pin_colors = {'open':'#EF4444','in_progress':'#3B82F6','resolved':'#F59E0B','verified':'#10B981','closed':'#10B981','rejected':'#94A3B8'} %}
+      {% set pc = pin_colors.get(pin.status, '#EF4444') %}
+      <div class="plan-pin" data-id="{{ pin.id }}"
+           style="position:absolute;left:{{ pin.pin_x * 100 }}%;top:{{ pin.pin_y * 100 }}%;margin-left:-12px;margin-top:-24px;cursor:pointer;z-index:10"
+           onclick="showPopup(this, {{ pin.id }})" ontouchend="showPopup(this, {{ pin.id }})">
+        <svg viewBox="0 0 24 24" width="24" height="24">
+          <path d="M12 0C7.6 0 4 3.6 4 8c0 5.4 8 16 8 16s8-10.6 8-16c0-4.4-3.6-8-8-8zm0 12c-2.2 0-4-1.8-4-4s1.8-4 4-4 4 1.8 4 4-1.8 4-4 4z" fill="{{ pc }}"/>
+        </svg>
+      </div>
+      {% endfor %}
+
+      {# Всплывающая мини-карточка #}
+      <div id="pinPopup" style="display:none;position:absolute;z-index:20;background:#fff;border-radius:10px;box-shadow:0 4px 16px rgba(0,0,0,0.18);padding:12px 14px;min-width:220px;max-width:280px;font-size:13px">
+        <div id="popupTitle" class="fw-bold mb-1" style="font-size:14px"></div>
+        <div id="popupStatus" class="mb-1"></div>
+        <div id="popupInfo" class="text-muted mb-2" style="font-size:12px"></div>
+        <a id="popupLink" href="#" class="btn btn-sm btn-outline-primary w-100"><i class="bi bi-arrow-right me-1"></i>Открыть замечание</a>
+      </div>
+    </div>
+  </div>
+</div>
+
+{% if not pins %}
+<div class="text-center text-muted mt-3" style="font-size:13px">
+  <i class="bi bi-pin-map me-1"></i>На этом плане пока нет замечаний.
+  {% if can_create %}
+    <a href="{{ url_for('defect_add') }}?object_id={{ obj.id }}&plan_id={{ plan.id }}">Добавить замечание</a>
+  {% endif %}
+</div>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+var pinsData = {{ pins|tojson }};
+var statusLabels = {'open':'Открыто','in_progress':'В работе','resolved':'Устранено','verified':'Проверено','closed':'Закрыто','rejected':'Отклонено'};
+var statusBadges = {'open':'badge-overdue','in_progress':'badge-progress','resolved':'badge-rework','verified':'badge-done','closed':'badge-done','rejected':'badge-pending'};
+
+var popup = document.getElementById('pinPopup');
+var currentPopupId = null;
+
+function showPopup(el, defectId) {
+  if (currentPopupId === defectId) {
+    popup.style.display = 'none';
+    currentPopupId = null;
+    return;
+  }
+  var pin = pinsData.find(p => p.id === defectId);
+  if (!pin) return;
+
+  document.getElementById('popupTitle').textContent = pin.title;
+  document.getElementById('popupStatus').innerHTML = '<span class="badge ' + (statusBadges[pin.status]||'badge-pending') + '">' + (statusLabels[pin.status]||pin.status) + '</span>';
+  var info = '';
+  if (pin.contractor_name) info += pin.contractor_name;
+  if (pin.reporter_name) info += (info ? ' · ' : '') + pin.reporter_name;
+  document.getElementById('popupInfo').textContent = info;
+  document.getElementById('popupLink').href = '/defects/' + defectId;
+
+  // Position popup near pin
+  var container = document.getElementById('planContainer');
+  var rect = container.getBoundingClientRect();
+  var pinRect = el.getBoundingClientRect();
+  var left = pinRect.left - rect.left + 14;
+  var top = pinRect.top - rect.top - 10;
+
+  // Keep popup within container
+  if (left + 260 > rect.width) left = left - 260;
+  if (left < 0) left = 10;
+  if (top < 0) top = pinRect.bottom - rect.top + 5;
+
+  popup.style.left = left + 'px';
+  popup.style.top = top + 'px';
+  popup.style.display = '';
+  currentPopupId = defectId;
+}
+
+// Close popup on click outside
+document.addEventListener('click', function(e) {
+  if (!e.target.closest('.plan-pin') && !e.target.closest('#pinPopup')) {
+    popup.style.display = 'none';
+    currentPopupId = null;
+  }
+});
+</script>
+{% endblock %}

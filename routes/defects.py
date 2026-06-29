@@ -134,13 +134,24 @@ def register(app):
                 abort(404)
             contractor_id = stage['contractor_id']
 
+            plan_id = request.form.get('plan_id', '').strip() or None
+            pin_x = request.form.get('pin_x', '').strip() or None
+            pin_y = request.form.get('pin_y', '').strip() or None
+            try:
+                pin_x = float(pin_x) if pin_x else None
+                pin_y = float(pin_y) if pin_y else None
+            except (ValueError, TypeError):
+                pin_x = pin_y = None
+            if plan_id:
+                plan_id = int(plan_id)
+
             db = get_db()
             cur = db.execute(
                 'INSERT INTO defects (object_id, stage_id, substage_id, title, description, '
-                'type_id, priority, reporter_id, contractor_id, due_date) '
-                'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+                'type_id, priority, reporter_id, contractor_id, due_date, plan_id, pin_x, pin_y) '
+                'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
                 (object_id, stage_id, substage_id, title, description,
-                 type_id, priority, current_user.id, contractor_id, due_date),
+                 type_id, priority, current_user.id, contractor_id, due_date, plan_id, pin_x, pin_y),
             )
             defect_id = cur.lastrowid
 
@@ -177,8 +188,12 @@ def register(app):
 
         objects = query_db("SELECT id, name FROM objects WHERE status='active' ORDER BY name")
         types = query_db('SELECT id, name FROM defect_types ORDER BY order_num')
+        preselect_object = request.args.get('object_id', '')
+        preselect_plan = request.args.get('plan_id', '')
         return render_template('defects/form.html', objects=objects, types=types,
-                               priority_labels=PRIORITY_LABELS)
+                               priority_labels=PRIORITY_LABELS,
+                               preselect_object=preselect_object,
+                               preselect_plan=preselect_plan)
 
     @app.route('/defects/<int:defect_id>')
     @login_required
@@ -211,10 +226,14 @@ def register(app):
             'LEFT JOIN users u ON dh.user_id = u.id '
             'WHERE dh.defect_id = ? ORDER BY dh.created_at DESC', (defect_id,))
 
+        plan = None
+        if d['plan_id']:
+            plan = query_db('SELECT * FROM object_plans WHERE id = ?', (d['plan_id'],), one=True)
+
         return render_template('defects/detail.html', d=d,
                                photos_before=photos_before, photos_after=photos_after,
                                photos_all=photos_all,
-                               history=history,
+                               history=history, plan=plan,
                                status_labels=STATUS_LABELS, priority_labels=PRIORITY_LABELS)
 
     # ═══ Действия с замечанием ═══
@@ -406,6 +425,14 @@ def register(app):
             'SELECT id, name FROM construction_stages WHERE object_id = ? ORDER BY order_num',
             (object_id,))
         return jsonify([dict(s) for s in stages])
+
+    @app.route('/api/plans-by-object/<int:object_id>')
+    @login_required
+    def api_plans_by_object(object_id):
+        plans = query_db(
+            'SELECT id, title, level_label, filename, object_id FROM object_plans '
+            'WHERE object_id = ? ORDER BY sort_order', (object_id,))
+        return jsonify([dict(p) for p in plans])
 
     @app.route('/api/substages-by-stage/<int:stage_id>')
     @login_required

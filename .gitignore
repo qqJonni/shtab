@@ -8,6 +8,7 @@ static/docs/
 static/avatars/
 static/defects/
 static/packages/
+static/plans/
 backups/
 *.egg-info/
 dist/

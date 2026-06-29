@@ -4,7 +4,7 @@ from flask_login import login_required, current_user
 
 import config
 from db import query_db, execute_db, notify
-from helpers import role_required, save_stage_document, save_substage_photo
+from helpers import role_required, save_stage_document, save_substage_photo, save_plan_file
 
 VIEWERS = ('manager', 'admin', 'pto', 'inspector', 'foreman')
 EDITORS = ('manager', 'admin')
@@ -254,11 +254,13 @@ def register(app):
 
         guest_token = query_db('SELECT token FROM guest_tokens WHERE object_id=?', (obj_id,), one=True)
 
+        plans = query_db('SELECT * FROM object_plans WHERE object_id=? ORDER BY sort_order, id', (obj_id,))
+
         return render_template('objects/detail.html', obj=obj, stages=stages_list,
                                progress=progress, total_subs=total_subs, total_done=total_done,
                                defects_open=defects_open, defects_closed=defects_closed,
                                packages_active=packages_active, mr_active=mr_active,
-                               guest_token=guest_token)
+                               guest_token=guest_token, plans=plans)
 
     @app.route('/objects/<int:obj_id>/edit', methods=['GET', 'POST'])
     @login_required
@@ -301,6 +303,58 @@ def register(app):
         label = 'восстановлен' if new_status == 'active' else 'архивирован'
         flash(f'Объект {label}.', 'success')
         return redirect(url_for('objects_list'))
+
+    # ═══ Планы объекта ═══
+
+    PLAN_EDITORS = ('manager', 'pto', 'admin')
+
+    @app.route('/objects/<int:obj_id>/plans/upload', methods=['POST'])
+    @login_required
+    @role_required(*PLAN_EDITORS)
+    def plan_upload(obj_id):
+        obj = query_db('SELECT id FROM objects WHERE id = ?', (obj_id,), one=True)
+        if not obj:
+            abort(404)
+        file = request.files.get('file')
+        title = request.form.get('title', '').strip()
+        level_label = request.form.get('level_label', '').strip()
+
+        if not file or not file.filename:
+            flash('Выберите файл плана.', 'danger')
+            return redirect(url_for('object_detail', obj_id=obj_id))
+
+        filename = save_plan_file(file, obj_id)
+        if not filename:
+            flash('Недопустимый формат. Допустимы: PNG, JPG, WEBP.', 'danger')
+            return redirect(url_for('object_detail', obj_id=obj_id))
+
+        if not title:
+            title = file.filename
+
+        max_order = query_db('SELECT MAX(sort_order) as mx FROM object_plans WHERE object_id=?',
+                             (obj_id,), one=True)['mx'] or 0
+
+        execute_db(
+            'INSERT INTO object_plans (object_id, title, level_label, filename, sort_order, uploaded_by) '
+            'VALUES (?, ?, ?, ?, ?, ?)',
+            (obj_id, title, level_label, filename, max_order + 1, current_user.id))
+        flash('План загружен.', 'success')
+        return redirect(url_for('object_detail', obj_id=obj_id))
+
+    @app.route('/objects/<int:obj_id>/plans/<int:plan_id>/delete', methods=['POST'])
+    @login_required
+    @role_required(*PLAN_EDITORS)
+    def plan_delete(obj_id, plan_id):
+        plan = query_db('SELECT * FROM object_plans WHERE id=? AND object_id=?', (plan_id, obj_id), one=True)
+        if not plan:
+            abort(404)
+        filepath = os.path.join(config.PLANS_FOLDER, str(obj_id), plan['filename'])
+        if os.path.exists(filepath):
+            os.remove(filepath)
+        execute_db('UPDATE defects SET plan_id=NULL, pin_x=NULL, pin_y=NULL WHERE plan_id=?', (plan_id,))
+        execute_db('DELETE FROM object_plans WHERE id=?', (plan_id,))
+        flash('План удалён.', 'success')
+        return redirect(url_for('object_detail', obj_id=obj_id))
 
     # ═══ Этапы строительства ═══
 

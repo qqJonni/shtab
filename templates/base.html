@@ -162,7 +162,7 @@
         {% else %}
           <span class="crm-sidebar-avatar-circle">{{ current_user.initials }}</span>
         {% endif %}
-        {{ current_user.full_name or current_user.username }}
+        <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0">{{ current_user.full_name or current_user.username }}</span>
       </a>
       <a class="crm-sidebar-link" href="{{ url_for('logout') }}"><i class="bi bi-box-arrow-left"></i> Выйти</a>
     </div>

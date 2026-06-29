@@ -94,7 +94,7 @@ def create_app():
 
 
 def register_routes(app):
-    from routes import auth, notifications, dashboards, objects, defects, packages, supply, export, guest, admin, report_page
+    from routes import auth, notifications, dashboards, objects, defects, packages, supply, export, guest, admin, report_page, plans
     auth.register(app)
     notifications.register(app)
     dashboards.register(app)
@@ -106,6 +106,7 @@ def register_routes(app):
     guest.register(app)
     admin.register(app)
     report_page.register(app)
+    plans.register(app)
 
 
 def init_db():
@@ -291,6 +292,18 @@ def init_db():
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         );
 
+        CREATE TABLE IF NOT EXISTS object_plans (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            object_id INTEGER NOT NULL REFERENCES objects(id) ON DELETE CASCADE,
+            title TEXT NOT NULL,
+            level_label TEXT,
+            filename TEXT NOT NULL,
+            file_type TEXT NOT NULL DEFAULT 'image',
+            sort_order INTEGER NOT NULL DEFAULT 0,
+            uploaded_by INTEGER REFERENCES users(id),
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+
         CREATE TABLE IF NOT EXISTS material_requests (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             stage_id INTEGER NOT NULL REFERENCES construction_stages(id),
@@ -446,10 +459,15 @@ def run_migrations(db):
             ALTER TABLE stage_documents_new RENAME TO stage_documents;
         ''')
 
+    # M7A: plan_id, pin_x, pin_y в defects
+    for col, typedef in [('plan_id', 'INTEGER'), ('pin_x', 'REAL'), ('pin_y', 'REAL')]:
+        if not _col_exists('defects', col):
+            db.execute(f'ALTER TABLE defects ADD COLUMN {col} {typedef}')
+
     db.commit()
 
 
-for folder in (config.UPLOAD_FOLDER, config.DOCS_FOLDER, config.AVATARS_FOLDER, config.DEFECTS_FOLDER, config.PACKAGES_FOLDER):
+for folder in (config.UPLOAD_FOLDER, config.DOCS_FOLDER, config.AVATARS_FOLDER, config.DEFECTS_FOLDER, config.PACKAGES_FOLDER, config.PLANS_FOLDER):
     os.makedirs(folder, exist_ok=True)
 
 app = create_app()
