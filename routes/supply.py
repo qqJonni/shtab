@@ -55,23 +55,44 @@ def register(app):
     @app.route('/supply/requests')
     @login_required
     def supply_requests():
+        tab = request.args.get('tab', 'active')
+
         if current_user.role == 'contractor':
-            reqs = query_db(
-                'SELECT mr.*, cs.name as stage_name, o.name as object_name '
-                'FROM material_requests mr '
-                'JOIN construction_stages cs ON mr.stage_id = cs.id '
-                'JOIN objects o ON cs.object_id = o.id '
-                'WHERE mr.contractor_id = ? ORDER BY mr.created_at DESC',
-                (current_user.organization_id,))
+            if tab == 'archive':
+                reqs = query_db(
+                    'SELECT mr.*, cs.name as stage_name, o.name as object_name '
+                    'FROM material_requests mr '
+                    'JOIN construction_stages cs ON mr.stage_id = cs.id '
+                    'JOIN objects o ON cs.object_id = o.id '
+                    'WHERE mr.contractor_id = ? AND mr.status = "completed" ORDER BY mr.completed_at DESC',
+                    (current_user.organization_id,))
+            else:
+                reqs = query_db(
+                    'SELECT mr.*, cs.name as stage_name, o.name as object_name '
+                    'FROM material_requests mr '
+                    'JOIN construction_stages cs ON mr.stage_id = cs.id '
+                    'JOIN objects o ON cs.object_id = o.id '
+                    'WHERE mr.contractor_id = ? AND mr.status != "completed" ORDER BY mr.created_at DESC',
+                    (current_user.organization_id,))
         elif current_user.role in VIEWERS:
-            reqs = query_db(
-                'SELECT mr.*, cs.name as stage_name, o.name as object_name, '
-                'org.name as contractor_name '
-                'FROM material_requests mr '
-                'JOIN construction_stages cs ON mr.stage_id = cs.id '
-                'JOIN objects o ON cs.object_id = o.id '
-                'LEFT JOIN organizations org ON mr.contractor_id = org.id '
-                'ORDER BY mr.created_at DESC')
+            if tab == 'archive':
+                reqs = query_db(
+                    'SELECT mr.*, cs.name as stage_name, o.name as object_name, '
+                    'org.name as contractor_name '
+                    'FROM material_requests mr '
+                    'JOIN construction_stages cs ON mr.stage_id = cs.id '
+                    'JOIN objects o ON cs.object_id = o.id '
+                    'LEFT JOIN organizations org ON mr.contractor_id = org.id '
+                    'WHERE mr.status = "completed" ORDER BY mr.completed_at DESC')
+            else:
+                reqs = query_db(
+                    'SELECT mr.*, cs.name as stage_name, o.name as object_name, '
+                    'org.name as contractor_name '
+                    'FROM material_requests mr '
+                    'JOIN construction_stages cs ON mr.stage_id = cs.id '
+                    'JOIN objects o ON cs.object_id = o.id '
+                    'LEFT JOIN organizations org ON mr.contractor_id = org.id '
+                    'WHERE mr.status != "completed" ORDER BY mr.created_at DESC')
         else:
             abort(403)
 
@@ -87,7 +108,7 @@ def register(app):
             counts[st] = row['c']
 
         return render_template('supply/list.html', reqs=reqs, counts=counts,
-                               status_labels=STATUS_LABELS)
+                               status_labels=STATUS_LABELS, tab=tab)
 
     @app.route('/supply/requests/add', methods=['GET', 'POST'])
     @login_required
@@ -250,6 +271,60 @@ def register(app):
 
         flash('Заявка возвращена подрядчику.', 'success')
         return redirect(url_for('supply_request_detail', req_id=req_id))
+
+    # ═══ Редактирование заявки подрядчиком ═══
+
+    @app.route('/supply/requests/<int:req_id>/edit', methods=['GET', 'POST'])
+    @login_required
+    def supply_request_edit(req_id):
+        mr = query_db('SELECT * FROM material_requests WHERE id = ?', (req_id,), one=True)
+        if not mr or mr['status'] != 'returned':
+            abort(404)
+        if not _is_own_contractor(mr):
+            abort(403)
+
+        if request.method == 'POST':
+            names = request.form.getlist('item_name[]')
+            units = request.form.getlist('item_unit[]')
+            qtys = request.form.getlist('item_qty[]')
+            comments = request.form.getlist('item_comment[]')
+
+            items = []
+            for i in range(len(names)):
+                name = names[i].strip() if i < len(names) else ''
+                if not name:
+                    continue
+                items.append({
+                    'name': name,
+                    'unit': units[i].strip() if i < len(units) else '',
+                    'qty': qtys[i].strip() if i < len(qtys) else '',
+                    'comment': comments[i].strip() if i < len(comments) else '',
+                })
+
+            if not items:
+                flash('Добавьте хотя бы одну позицию.', 'danger')
+                return redirect(url_for('supply_request_edit', req_id=req_id))
+
+            db = get_db()
+            db.execute('DELETE FROM material_request_items WHERE request_id = ?', (req_id,))
+            for item in items:
+                try:
+                    qty = float(item['qty']) if item['qty'] else None
+                except ValueError:
+                    qty = None
+                db.execute(
+                    'INSERT INTO material_request_items (request_id, material_name, unit, quantity, comment) '
+                    'VALUES (?, ?, ?, ?, ?)',
+                    (req_id, item['name'], item['unit'], qty, item['comment']))
+            db.commit()
+            _write_history(req_id, 'edited', 'Позиции отредактированы')
+
+            flash('Заявка отредактирована.', 'success')
+            return redirect(url_for('supply_request_detail', req_id=req_id))
+
+        items = query_db('SELECT * FROM material_request_items WHERE request_id = ? ORDER BY id', (req_id,))
+        full = _get_request_full(req_id)
+        return render_template('supply/edit.html', mr=mr, full=full, items=items)
 
     # ═══ Повторная отправка подрядчиком ═══
 

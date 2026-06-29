@@ -2,15 +2,11 @@
 {% block title %}Дашборд — ШТАБ{% endblock %}
 {% block topbar_title %}Дашборд · {{ role_label }}{% endblock %}
 {% block content %}
-<div class="d-flex justify-content-between align-items-center mb-4">
-  <div>
-    <h4 class="fw-bold mb-1">Добро пожаловать, {{ current_user.full_name or current_user.username }}!</h4>
-    <p class="text-muted mb-0">{{ role_label }}</p>
-  </div>
-  <a href="{{ url_for('export_summary') }}" class="btn btn-outline-primary btn-sm"><i class="bi bi-file-earmark-excel me-1"></i>Экспорт в Excel</a>
-</div>
+<h4 class="fw-bold mb-1">Добро пожаловать, {{ current_user.full_name or current_user.username }}!</h4>
+<p class="text-muted mb-4">{{ role_label }}</p>
 
-{# ═══ КАРТОЧКИ-СВОДКИ ═══ #}
+{# ═══ ОБЪЕКТЫ И ЭТАПЫ ═══ #}
+<h6 class="fw-bold mb-2" style="color:var(--text-secondary);font-size:12px;text-transform:uppercase;letter-spacing:0.5px">Объекты и этапы</h6>
 <div class="row g-3 mb-4">
   <div class="col-6 col-lg-2">
     <a href="{{ url_for('objects_list') }}" class="text-decoration-none">
@@ -23,22 +19,16 @@
       <div><div class="stat-card-value">{{ sc.stages_in_progress }}</div><div class="stat-card-label">Этапов в работе</div></div></div>
   </div>
   <div class="col-6 col-lg-2">
-    <a href="{{ url_for('defects_list', status='open') }}" class="text-decoration-none">
-      <div class="stat-card"><div class="stat-card-icon" style="background:rgba(239,68,68,0.08);color:var(--danger)"><i class="bi bi-exclamation-triangle"></i></div>
-        <div><div class="stat-card-value">{{ sc.defects_open }}</div><div class="stat-card-label">Замечаний</div></div></div>
-    </a>
+    <div class="stat-card"><div class="stat-card-icon" style="background:rgba(59,130,246,0.08);color:var(--primary)"><i class="bi bi-list-check"></i></div>
+      <div><div class="stat-card-value">{{ sc.substages_total }}</div><div class="stat-card-label">Всего подэтапов</div></div></div>
   </div>
   <div class="col-6 col-lg-2">
-    <a href="{{ url_for('defects_list', overdue='1') }}" class="text-decoration-none">
-      <div class="stat-card"><div class="stat-card-icon" style="background:rgba(239,68,68,0.08);color:var(--danger)"><i class="bi bi-alarm"></i></div>
-        <div><div class="stat-card-value">{{ sc.defects_overdue }}</div><div class="stat-card-label">Просроченных</div></div></div>
-    </a>
+    <div class="stat-card"><div class="stat-card-icon" style="background:rgba(245,158,11,0.08);color:var(--warning)"><i class="bi bi-play-circle"></i></div>
+      <div><div class="stat-card-value">{{ sc.substages_in_progress }}</div><div class="stat-card-label">Подэтапов в работе</div></div></div>
   </div>
   <div class="col-6 col-lg-2">
-    <a href="{{ url_for('packages_list') }}" class="text-decoration-none">
-      <div class="stat-card"><div class="stat-card-icon" style="background:rgba(245,158,11,0.08);color:var(--warning)"><i class="bi bi-hourglass-split"></i></div>
-        <div><div class="stat-card-value">{{ sc.packages_in_review }}</div><div class="stat-card-label">На согласовании</div></div></div>
-    </a>
+    <div class="stat-card"><div class="stat-card-icon" style="background:rgba(239,68,68,0.08);color:var(--danger)"><i class="bi bi-alarm"></i></div>
+      <div><div class="stat-card-value">{{ sc.substages_overdue }}</div><div class="stat-card-label">Просроченных подэтапов</div></div></div>
   </div>
   <div class="col-6 col-lg-2">
     <a href="{{ url_for('supply_requests') }}" class="text-decoration-none">
@@ -48,30 +38,47 @@
   </div>
 </div>
 
+{# ═══ ЗАМЕЧАНИЯ ═══ #}
+<h6 class="fw-bold mb-2" style="color:var(--text-secondary);font-size:12px;text-transform:uppercase;letter-spacing:0.5px">Замечания</h6>
+<div class="row g-3 mb-4">
+  <div class="col-6 col-lg-4">
+    <a href="{{ url_for('defects_list', status='open') }}" class="text-decoration-none">
+      <div class="stat-card"><div class="stat-card-icon" style="background:rgba(239,68,68,0.08);color:var(--danger)"><i class="bi bi-exclamation-triangle"></i></div>
+        <div><div class="stat-card-value">{{ sc.defects_open }}</div><div class="stat-card-label">Открытых</div></div></div>
+    </a>
+  </div>
+  <div class="col-6 col-lg-4">
+    <a href="{{ url_for('defects_list', overdue='1') }}" class="text-decoration-none">
+      <div class="stat-card"><div class="stat-card-icon" style="background:rgba(239,68,68,0.08);color:var(--danger)"><i class="bi bi-alarm"></i></div>
+        <div><div class="stat-card-value">{{ sc.defects_overdue }}</div><div class="stat-card-label">Просроченных</div></div></div>
+    </a>
+  </div>
+  <div class="col-6 col-lg-4">
+    <a href="{{ url_for('defects_list') }}" class="text-decoration-none">
+      <div class="stat-card"><div class="stat-card-icon" style="background:rgba(16,185,129,0.08);color:var(--success)"><i class="bi bi-check-circle"></i></div>
+        <div><div class="stat-card-value">{{ sc.defects_closed }}</div><div class="stat-card-label">Закрытых</div></div></div>
+    </a>
+  </div>
+</div>
+
 {# ═══ ДИАГРАММЫ ═══ #}
 <div class="row g-3 mb-4">
-  <div class="col-md-6 col-lg-3">
+  <div class="col-md-6 col-lg-4">
     <div class="card h-100"><div class="card-body p-3">
       <h6 class="fw-bold mb-2" style="font-size:13px">Подэтапы</h6>
       <canvas id="chartSubstages" height="180"></canvas>
     </div></div>
   </div>
-  <div class="col-md-6 col-lg-3">
+  <div class="col-md-6 col-lg-4">
     <div class="card h-100"><div class="card-body p-3">
       <h6 class="fw-bold mb-2" style="font-size:13px">Здоровье графика</h6>
       <canvas id="chartHealth" height="180"></canvas>
     </div></div>
   </div>
-  <div class="col-md-6 col-lg-3">
+  <div class="col-md-6 col-lg-4">
     <div class="card h-100"><div class="card-body p-3">
       <h6 class="fw-bold mb-2" style="font-size:13px">Замечания (приоритет)</h6>
       <canvas id="chartDefects" height="180"></canvas>
-    </div></div>
-  </div>
-  <div class="col-md-6 col-lg-3">
-    <div class="card h-100"><div class="card-body p-3">
-      <h6 class="fw-bold mb-2" style="font-size:13px">Цепочка согласования</h6>
-      <canvas id="chartPipeline" height="180"></canvas>
     </div></div>
   </div>
 </div>
@@ -174,17 +181,5 @@ new Chart(document.getElementById('chartDefects'), {
   options: { plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true, ticks: { stepSize: 1 } } } }
 });
 
-new Chart(document.getElementById('chartPipeline'), {
-  type: 'bar',
-  data: {
-    labels: ['Технадзор', 'Прораб', 'ПТО', 'Руковод.', 'Бухгалт.'],
-    datasets: [{
-      label: 'Ожидают',
-      data: [{{ pp.get('inspector', 0) }}, {{ pp.get('foreman', 0) }}, {{ pp.get('pto', 0) }}, {{ pp.get('manager', 0) }}, {{ pp.get('accountant', 0) }}],
-      backgroundColor: '#3B82F6',
-    }]
-  },
-  options: { indexAxis: 'y', plugins: { legend: { display: false } }, scales: { x: { beginAtZero: true, ticks: { stepSize: 1 } } } }
-});
 </script>
 {% endblock %}

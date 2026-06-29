@@ -54,7 +54,6 @@
           <th>Материал</th>
           <th>Ед.</th>
           <th class="text-end">Кол-во</th>
-          <th class="text-end">Цена (₽)</th>
           <th>Комментарий</th>
         </tr>
       </thead>
@@ -65,7 +64,6 @@
           <td class="fw-medium">{{ item.material_name }}</td>
           <td class="text-muted">{{ item.unit or '—' }}</td>
           <td class="text-end">{{ '{:,.2f}'.format(item.quantity).replace(',', ' ') if item.quantity is not none else '—' }}</td>
-          <td class="text-end">{{ '{:,.2f}'.format(item.price).replace(',', ' ') if item.price is not none else '—' }}</td>
           <td class="text-muted" style="font-size:13px">{{ item.comment or '' }}</td>
         </tr>
         {% endfor %}
@@ -145,7 +143,8 @@
       {% if last_return and last_return.comment %}
         <div class="mt-1" style="font-size:14px">{{ last_return.comment }}</div>
       {% endif %}
-      <div class="mt-2">
+      <div class="mt-2 d-flex gap-2">
+        <a href="{{ url_for('supply_request_edit', req_id=mr.id) }}" class="btn btn-outline-primary btn-sm"><i class="bi bi-pencil me-1"></i>Редактировать</a>
         <form method="post" action="{{ url_for('supply_request_resubmit', req_id=mr.id) }}" class="d-inline">
           <button class="btn btn-primary btn-sm"><i class="bi bi-send me-1"></i>Отправить повторно</button>
         </form>

@@ -386,6 +386,15 @@ def register(app):
             flash('Введите комментарий.', 'danger')
             return redirect(url_for('defect_detail', defect_id=defect_id))
         _write_history(defect_id, 'comment', comment=comment)
+
+        # Уведомить другую сторону
+        if current_user.role == 'contractor':
+            _notify_reporter(d, f'Комментарий к замечанию #{defect_id}',
+                             f'Подрядчик оставил комментарий: {comment[:100]}')
+        else:
+            _notify_contractor(d, f'Комментарий к замечанию #{defect_id}',
+                               f'{current_user.full_name or current_user.username} оставил комментарий: {comment[:100]}')
+
         flash('Комментарий добавлен.', 'success')
         return redirect(url_for('defect_detail', defect_id=defect_id))
 

@@ -3,9 +3,15 @@
 {% block topbar_title %}Пакет документов #{{ pkg.id }}{% endblock %}
 {% block content %}
 <div class="mb-3">
-  <a href="{{ url_for('substage_detail', sub_id=pkg.substage_id) }}" class="text-decoration-none" style="font-size:13px">
-    <i class="bi bi-arrow-left me-1"></i>{{ pkg.substage_name }}
-  </a>
+  {% if current_user.role in ('manager', 'admin', 'pto', 'inspector', 'foreman', 'contractor') %}
+    <a href="{{ url_for('packages_list') }}" class="text-decoration-none" style="font-size:13px">
+      <i class="bi bi-arrow-left me-1"></i>Назад к списку
+    </a>
+  {% else %}
+    <a href="{{ url_for('dashboard') }}" class="text-decoration-none" style="font-size:13px">
+      <i class="bi bi-arrow-left me-1"></i>Назад
+    </a>
+  {% endif %}
 </div>
 
 <div class="d-flex justify-content-between align-items-start mb-3">

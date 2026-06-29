@@ -9,17 +9,9 @@
   {% endif %}
 </div>
 
-<div class="d-flex gap-2 flex-wrap mb-3">
-  <span class="btn btn-sm btn-outline-secondary disabled">
-    Все <span class="badge bg-light text-dark ms-1">{{ counts.values()|sum }}</span>
-  </span>
-  {% for st, label in status_labels.items() %}
-    {% if counts[st] > 0 %}
-      <span class="btn btn-sm btn-outline-secondary disabled">
-        {{ label }} <span class="badge bg-light text-dark ms-1">{{ counts[st] }}</span>
-      </span>
-    {% endif %}
-  {% endfor %}
+<div class="d-flex gap-2 mb-3">
+  <a href="{{ url_for('supply_requests', tab='active') }}" class="btn btn-sm {% if tab == 'active' %}btn-primary{% else %}btn-outline-secondary{% endif %}">Активные</a>
+  <a href="{{ url_for('supply_requests', tab='archive') }}" class="btn btn-sm {% if tab == 'archive' %}btn-primary{% else %}btn-outline-secondary{% endif %}">Архив</a>
 </div>
 
 {% if not reqs %}

@@ -1,31 +1,14 @@
 {% extends "base.html" %}
-{% block title %}Новая заявка — ШТАБ{% endblock %}
-{% block topbar_title %}Новая заявка на материал{% endblock %}
+{% block title %}Редактирование заявки — ШТАБ{% endblock %}
+{% block topbar_title %}Редактирование заявки #{{ mr.id }}{% endblock %}
 {% block content %}
 <div class="row justify-content-center">
   <div class="col-lg-9">
     <div class="card mb-4">
       <div class="card-body p-4">
-        <h5 class="fw-bold mb-4">Новая заявка на давальческий материал</h5>
-        <form method="post" id="supplyForm">
-          <div class="row g-3 mb-4">
-            <div class="col-sm-6">
-              <label class="form-label">Этап *</label>
-              <select name="stage_id" id="selStage" class="form-select" required>
-                <option value="">Выберите этап</option>
-                {% for s in stages %}
-                  <option value="{{ s.id }}">{{ s.object_name }} → {{ s.name }}</option>
-                {% endfor %}
-              </select>
-            </div>
-            <div class="col-sm-6">
-              <label class="form-label">Подэтап (необязательно)</label>
-              <select name="substage_id" id="selSubstage" class="form-select">
-                <option value="">— не привязан —</option>
-              </select>
-            </div>
-          </div>
-
+        <h5 class="fw-bold mb-2">Редактирование заявки #{{ mr.id }}</h5>
+        <p class="text-muted mb-4" style="font-size:13px">{{ full.object_name }} → {{ full.stage_name }}</p>
+        <form method="post" id="editForm">
           <h6 class="fw-bold mb-3">Позиции</h6>
           <div class="table-responsive mb-3">
             <table class="table table-hover mb-0" id="itemsTable">
@@ -46,8 +29,8 @@
           <button type="button" class="btn btn-sm btn-outline-primary mb-4" onclick="addRow()"><i class="bi bi-plus-lg me-1"></i>Добавить строку</button>
 
           <div class="d-flex gap-2">
-            <button type="submit" class="btn btn-success"><i class="bi bi-send me-1"></i>Отправить заявку</button>
-            <a href="{{ url_for('supply_requests') }}" class="btn btn-outline-secondary">Отмена</a>
+            <button type="submit" class="btn btn-primary"><i class="bi bi-check-lg me-1"></i>Сохранить</button>
+            <a href="{{ url_for('supply_request_detail', req_id=mr.id) }}" class="btn btn-outline-secondary">Отмена</a>
           </div>
         </form>
       </div>
@@ -85,18 +68,12 @@ function renumber() {
   rowCount = rows.length;
 }
 
-// Cascade: stage → substages
-document.getElementById('selStage').addEventListener('change', function() {
-  var subSel = document.getElementById('selSubstage');
-  subSel.innerHTML = '<option value="">— не привязан —</option>';
-  if (!this.value) return;
-  fetch('/api/substages-by-stage/' + this.value)
-    .then(r => r.json())
-    .then(data => {
-      data.forEach(s => { subSel.innerHTML += '<option value="'+s.id+'">'+s.name+'</option>'; });
-    });
-});
-
+// Load existing items
+{% for item in items %}
+addRow({name: {{ item.material_name|tojson }}, unit: {{ (item.unit or '')|tojson }}, qty: '{{ item.quantity or "" }}', comment: {{ (item.comment or '')|tojson }}});
+{% endfor %}
+{% if not items %}
 addRow();
+{% endif %}
 </script>
 {% endblock %}

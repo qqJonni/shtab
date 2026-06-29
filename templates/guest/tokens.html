@@ -51,7 +51,7 @@
             <td>
               <div class="input-group input-group-sm" style="max-width:400px">
                 <input type="text" class="form-control form-control-sm" value="{{ request.host_url }}guest/{{ t.token }}" readonly id="link-{{ t.id }}" style="font-size:12px">
-                <button class="btn btn-outline-secondary" type="button" onclick="navigator.clipboard.writeText(document.getElementById('link-{{ t.id }}').value);this.innerHTML='<i class=\'bi bi-check\'></i>'"><i class="bi bi-clipboard"></i></button>
+                <button class="btn btn-outline-secondary" type="button" onclick="copyText('link-{{ t.id }}', this)"><i class="bi bi-clipboard"></i></button>
               </div>
             </td>
             <td class="text-muted" style="font-size:13px">{{ t.creator_name or '—' }}</td>
@@ -73,4 +73,26 @@
     </div>
   </div>
 {% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+function copyText(inputId, btn) {
+  var input = document.getElementById(inputId);
+  input.select();
+  input.setSelectionRange(0, 99999);
+  try {
+    document.execCommand('copy');
+    btn.innerHTML = '<i class="bi bi-check"></i>';
+    setTimeout(function() { btn.innerHTML = '<i class="bi bi-clipboard"></i>'; }, 2000);
+  } catch(e) {
+    if (navigator.clipboard) {
+      navigator.clipboard.writeText(input.value).then(function() {
+        btn.innerHTML = '<i class="bi bi-check"></i>';
+        setTimeout(function() { btn.innerHTML = '<i class="bi bi-clipboard"></i>'; }, 2000);
+      });
+    }
+  }
+}
+</script>
 {% endblock %}

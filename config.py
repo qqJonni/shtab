@@ -27,7 +27,7 @@ ORG_TYPES = {
     'contractor':  'Подрядчик',
 }
 
-UNITS = ['м2', 'м.пог.', 'шт.', 'м3', 'м.', 'ч.']
+UNITS = ['м2', 'м.пог.', 'шт.', 'м3', 'м.', 'ч.', 'т.', 'кг.']
 
 UPLOAD_FOLDER = os.path.join(BASE_DIR, 'static', 'uploads')
 DOCS_FOLDER = os.path.join(BASE_DIR, 'static', 'docs')

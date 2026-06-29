@@ -1,0 +1,228 @@
+{% extends "base.html" %}
+{% block title %}Отчёты — ШТАБ{% endblock %}
+{% block topbar_title %}Отчёты{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+  <h4 class="fw-bold mb-0">Отчёты</h4>
+  <div class="d-flex gap-2">
+    <button onclick="exportFiltered()" class="btn btn-outline-success btn-sm" id="btnExportFiltered" style="display:none"><i class="bi bi-file-earmark-excel me-1"></i>Экспорт отчёта</button>
+    <a href="{{ url_for('export_summary') }}" class="btn btn-outline-primary btn-sm"><i class="bi bi-file-earmark-excel me-1"></i>Полная сводка</a>
+  </div>
+</div>
+
+{# Панель управления #}
+<div class="card mb-4">
+  <div class="card-body p-4">
+    <div class="row g-3">
+      <div class="col-sm-4">
+        <label class="form-label">Отчёт</label>
+        <select id="reportType" class="form-select" onchange="loadReport()">
+          <optgroup label="Подэтапы">
+            <option value="substages_status">Подэтапы по статусам</option>
+            <option value="substages_by_object">Подэтапы по объектам</option>
+            <option value="substages_by_contractor">Подэтапы по подрядчикам</option>
+            <option value="substages_overdue_by_object">Просроченные по объектам</option>
+            <option value="substages_overdue_by_contractor">Просроченные по подрядчикам</option>
+          </optgroup>
+          <optgroup label="Этапы и замечания">
+            <option value="stages_status">Этапы по статусам</option>
+            <option value="defects_priority">Замечания по приоритетам</option>
+            <option value="defects_status">Замечания по статусам</option>
+            <option value="defects_by_contractor">Замечания по подрядчикам</option>
+          </optgroup>
+          <optgroup label="Таблицы">
+            <option value="table_substages">Все подэтапы</option>
+            <option value="table_substages_overdue">Просроченные подэтапы</option>
+            <option value="table_defects">Все замечания</option>
+          </optgroup>
+        </select>
+      </div>
+      <div class="col-sm-2">
+        <label class="form-label">Отображение</label>
+        <select id="chartType" class="form-select" onchange="renderResult()">
+          <option value="bar">Столбцы</option>
+          <option value="doughnut">Кольцевая</option>
+          <option value="pie">Круговая</option>
+        </select>
+      </div>
+      <div class="col-sm-2">
+        <label class="form-label">Объект</label>
+        <select id="filterObject" class="form-select" onchange="loadStages(); loadReport()">
+          <option value="">Все</option>
+          {% for o in objects %}
+            <option value="{{ o.id }}">{{ o.name }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="col-sm-2">
+        <label class="form-label">Этап</label>
+        <select id="filterStage" class="form-select" onchange="loadReport()">
+          <option value="">Все</option>
+        </select>
+      </div>
+      <div class="col-sm-2">
+        <label class="form-label">Подрядчик</label>
+        <select id="filterContractor" class="form-select" onchange="loadReport()">
+          <option value="">Все</option>
+          {% for c in contractors %}
+            <option value="{{ c.id }}">{{ c.name }}</option>
+          {% endfor %}
+        </select>
+      </div>
+    </div>
+  </div>
+</div>
+
+{# Результат: диаграмма или таблица #}
+<div class="card">
+  <div class="card-body p-4">
+    <h5 class="fw-bold mb-3" id="reportTitle">Выберите отчёт</h5>
+    <div id="chartContainer" style="max-height:450px;position:relative">
+      <canvas id="reportChart"></canvas>
+    </div>
+    <div id="tableContainer" style="display:none">
+      <div class="table-responsive">
+        <table class="table table-hover mb-0" id="reportTable">
+          <thead id="reportThead"></thead>
+          <tbody id="reportTbody"></tbody>
+        </table>
+      </div>
+    </div>
+    <div id="emptyMessage" style="display:none" class="text-center py-5 text-muted">
+      <i class="bi bi-bar-chart" style="font-size:48px;opacity:.3"></i>
+      <p class="mt-3 mb-0">Нет данных для отображения</p>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+<script>
+Chart.defaults.font.family = "'Inter', sans-serif";
+Chart.defaults.font.size = 12;
+
+var currentChart = null;
+var currentData = null;
+
+function loadStages() {
+  var objId = document.getElementById('filterObject').value;
+  var sel = document.getElementById('filterStage');
+  sel.innerHTML = '<option value="">Все</option>';
+  if (!objId) return;
+  fetch('/api/stages-by-object/' + objId)
+    .then(r => r.json())
+    .then(data => {
+      data.forEach(s => { sel.innerHTML += '<option value="'+s.id+'">'+s.name+'</option>'; });
+    });
+}
+
+function loadReport() {
+  var report = document.getElementById('reportType').value;
+  var objId = document.getElementById('filterObject').value;
+  var stageId = document.getElementById('filterStage').value;
+  var conId = document.getElementById('filterContractor').value;
+
+  currentQuery = 'report=' + report;
+  if (objId) currentQuery += '&object_id=' + objId;
+  if (stageId) currentQuery += '&stage_id=' + stageId;
+  if (conId) currentQuery += '&contractor_id=' + conId;
+
+  var url = '/api/report-data?' + currentQuery;
+
+  // Disable chart type for tables
+  var isTable = report.startsWith('table_');
+  document.getElementById('chartType').disabled = isTable;
+
+  fetch(url)
+    .then(r => r.json())
+    .then(data => {
+      currentData = data;
+      document.getElementById('reportTitle').textContent = data.title || 'Отчёт';
+      // Show export button when data present
+      var hasData = (data.labels && data.labels.length > 0) || (data.rows && data.rows.length > 0);
+      document.getElementById('btnExportFiltered').style.display = hasData ? '' : 'none';
+      renderResult();
+    });
+}
+
+var currentQuery = '';
+
+function exportFiltered() {
+  window.location.href = '/api/report-export?' + currentQuery;
+}
+
+function renderResult() {
+  var data = currentData;
+  if (!data) return;
+
+  var chartBox = document.getElementById('chartContainer');
+  var tableBox = document.getElementById('tableContainer');
+  var emptyBox = document.getElementById('emptyMessage');
+
+  // Table mode
+  if (data.headers) {
+    chartBox.style.display = 'none';
+    emptyBox.style.display = 'none';
+    tableBox.style.display = '';
+
+    var thead = document.getElementById('reportThead');
+    var tbody = document.getElementById('reportTbody');
+    thead.innerHTML = '<tr>' + data.headers.map(h => '<th>' + h + '</th>').join('') + '</tr>';
+    tbody.innerHTML = data.rows.map(row =>
+      '<tr>' + row.map(c => '<td style="font-size:13px">' + (c !== null && c !== undefined ? c : '') + '</td>').join('') + '</tr>'
+    ).join('');
+    if (data.rows.length === 0) {
+      tableBox.style.display = 'none';
+      emptyBox.style.display = '';
+    }
+    return;
+  }
+
+  // Chart mode
+  tableBox.style.display = 'none';
+
+  if (!data.labels || data.labels.length === 0) {
+    chartBox.style.display = 'none';
+    emptyBox.style.display = '';
+    return;
+  }
+
+  chartBox.style.display = '';
+  emptyBox.style.display = 'none';
+
+  if (currentChart) currentChart.destroy();
+
+  var chartType = document.getElementById('chartType').value;
+  var ctx = document.getElementById('reportChart').getContext('2d');
+
+  var config = {
+    type: chartType,
+    data: {
+      labels: data.labels,
+      datasets: [{
+        data: data.data,
+        backgroundColor: data.colors,
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: true,
+      plugins: {
+        legend: { position: chartType === 'bar' ? 'none' : 'bottom' }
+      }
+    }
+  };
+
+  if (chartType === 'bar') {
+    config.options.plugins.legend = { display: false };
+    config.options.scales = { y: { beginAtZero: true, ticks: { stepSize: 1 } } };
+  }
+
+  currentChart = new Chart(ctx, config);
+}
+
+// Initial load
+loadReport();
+</script>
+{% endblock %}

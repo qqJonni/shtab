@@ -2,7 +2,14 @@
 {% block title %}Согласования — ШТАБ{% endblock %}
 {% block topbar_title %}Пакеты документов{% endblock %}
 {% block content %}
-<h4 class="fw-bold mb-3">Пакеты документов</h4>
+<h4 class="fw-bold mb-3">{% if current_user.role == 'contractor' %}Закрытие работ{% else %}Согласования{% endif %}</h4>
+
+<div class="d-flex gap-2 mb-3">
+  <a href="{{ url_for('packages_list', tab='active') }}" class="btn btn-sm {% if tab == 'active' %}btn-primary{% else %}btn-outline-secondary{% endif %}">
+    {% if current_user.role in ('inspector','foreman','pto','accountant') %}На мне{% else %}Активные{% endif %}
+  </a>
+  <a href="{{ url_for('packages_list', tab='archive') }}" class="btn btn-sm {% if tab == 'archive' %}btn-primary{% else %}btn-outline-secondary{% endif %}">Архив</a>
+</div>
 
 {% if not pkgs %}
   <div class="card">
