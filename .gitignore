@@ -9,6 +9,7 @@ static/avatars/
 static/defects/
 static/packages/
 static/plans/
+static/journal/
 backups/
 *.egg-info/
 dist/

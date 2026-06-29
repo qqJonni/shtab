@@ -46,6 +46,14 @@
   </div>
 </div>
 
+{# ═══ Быстрые ссылки ═══ #}
+<div class="d-flex gap-2 mb-4">
+  <a href="{{ url_for('journal_list', obj_id=obj.id) }}" class="btn btn-sm btn-outline-secondary"><i class="bi bi-journal-text me-1"></i>Журнал</a>
+  {% if current_user.role in ('manager', 'pto', 'admin') %}
+    <a href="{{ url_for('object_report_pdf', obj_id=obj.id) }}" class="btn btn-sm btn-outline-primary"><i class="bi bi-file-earmark-pdf me-1"></i>Отчёт PDF</a>
+  {% endif %}
+</div>
+
 {# ═══ Планы этажей ═══ #}
 <div class="d-flex justify-content-between align-items-center mb-3">
   <h5 class="fw-bold mb-0">Планы этажей</h5>

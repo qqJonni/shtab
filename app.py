@@ -94,7 +94,7 @@ def create_app():
 
 
 def register_routes(app):
-    from routes import auth, notifications, dashboards, objects, defects, packages, supply, export, guest, admin, report_page, plans
+    from routes import auth, notifications, dashboards, objects, defects, packages, supply, export, guest, admin, report_page, plans, journal
     auth.register(app)
     notifications.register(app)
     dashboards.register(app)
@@ -107,6 +107,7 @@ def register_routes(app):
     admin.register(app)
     report_page.register(app)
     plans.register(app)
+    journal.register(app)
 
 
 def init_db():
@@ -292,6 +293,23 @@ def init_db():
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         );
 
+        CREATE TABLE IF NOT EXISTS journal_entries (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            object_id INTEGER NOT NULL REFERENCES objects(id) ON DELETE CASCADE,
+            author_id INTEGER NOT NULL REFERENCES users(id),
+            entry_date DATE NOT NULL,
+            text TEXT NOT NULL,
+            weather TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+
+        CREATE TABLE IF NOT EXISTS journal_photos (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            entry_id INTEGER NOT NULL REFERENCES journal_entries(id) ON DELETE CASCADE,
+            filename TEXT NOT NULL,
+            uploaded_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+
         CREATE TABLE IF NOT EXISTS object_plans (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             object_id INTEGER NOT NULL REFERENCES objects(id) ON DELETE CASCADE,
@@ -467,7 +485,7 @@ def run_migrations(db):
     db.commit()
 
 
-for folder in (config.UPLOAD_FOLDER, config.DOCS_FOLDER, config.AVATARS_FOLDER, config.DEFECTS_FOLDER, config.PACKAGES_FOLDER, config.PLANS_FOLDER):
+for folder in (config.UPLOAD_FOLDER, config.DOCS_FOLDER, config.AVATARS_FOLDER, config.DEFECTS_FOLDER, config.PACKAGES_FOLDER, config.PLANS_FOLDER, config.JOURNAL_FOLDER):
     os.makedirs(folder, exist_ok=True)
 
 app = create_app()

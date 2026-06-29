@@ -59,6 +59,11 @@ def save_substage_photo(file, substage_id):
     return _save_file(file, folder, ALLOWED_IMG)
 
 
+def save_journal_photo(file, entry_id):
+    folder = os.path.join(config.JOURNAL_FOLDER, str(entry_id))
+    return _save_file(file, folder, ALLOWED_IMG | ALLOWED_VIDEO)
+
+
 def save_plan_file(file, object_id):
     folder = os.path.join(config.PLANS_FOLDER, str(object_id))
     return _save_file(file, folder, ALLOWED_IMG)

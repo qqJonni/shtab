@@ -35,6 +35,7 @@ AVATARS_FOLDER = os.path.join(BASE_DIR, 'static', 'avatars')
 DEFECTS_FOLDER = os.path.join(BASE_DIR, 'static', 'defects')
 PACKAGES_FOLDER = os.path.join(BASE_DIR, 'static', 'packages')
 PLANS_FOLDER = os.path.join(BASE_DIR, 'static', 'plans')
+JOURNAL_FOLDER = os.path.join(BASE_DIR, 'static', 'journal')
 MAX_CONTENT_LENGTH = 100 * 1024 * 1024
 
 APPROVAL_CHAIN = [
