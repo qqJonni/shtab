@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Нет соединения — ШТАБ</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: Inter, -apple-system, BlinkMacSystemFont, sans-serif;
+      background: #F5F6FA;
+      color: #1E293B;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      padding: 24px;
+    }
+    .card {
+      background: #fff;
+      border-radius: 16px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+      padding: 40px 32px;
+      max-width: 380px;
+      width: 100%;
+      text-align: center;
+    }
+    .icon {
+      width: 64px;
+      height: 64px;
+      background: rgba(239,68,68,0.08);
+      border-radius: 16px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin: 0 auto 24px;
+    }
+    .icon svg { width: 32px; height: 32px; color: #EF4444; }
+    h1 { font-size: 20px; font-weight: 600; margin-bottom: 8px; }
+    p { font-size: 14px; color: #64748B; line-height: 1.6; margin-bottom: 24px; }
+    button {
+      background: #3B82F6;
+      color: #fff;
+      border: none;
+      border-radius: 8px;
+      padding: 10px 24px;
+      font-size: 14px;
+      font-weight: 500;
+      cursor: pointer;
+      font-family: inherit;
+    }
+    button:active { opacity: 0.85; }
+    .logo {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 32px;
+      color: #1E293B;
+      font-weight: 700;
+      font-size: 18px;
+    }
+    .logo-dot {
+      width: 28px; height: 28px;
+      background: #1E293B;
+      border-radius: 6px;
+      display: flex; align-items: center; justify-content: center;
+    }
+    .logo-dot svg { width: 16px; height: 16px; fill: #3B82F6; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="logo">
+      <div class="logo-dot">
+        <svg viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg">
+          <path d="M1.5 0A1.5 1.5 0 0 0 0 1.5V16h5V9.5h6V16h5V1.5A1.5 1.5 0 0 0 14.5 0h-13zm1 3h2v2H2.5V3zm4 0h2v2h-2V3zm4 0h2v2h-2V3zM2.5 7h2v2h-2V7zm4 0h2v2h-2V7zm4 0h2v2h-2V7z"/>
+        </svg>
+      </div>
+      ШТАБ
+    </div>
+    <div class="icon">
+      <svg viewBox="0 0 24 24" fill="none" stroke="#EF4444" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M1 1l22 22M16.72 11.06A10.94 10.94 0 0 1 19 12.55M5 12.55a10.94 10.94 0 0 1 5.17-2.39M10.71 5.05A16 16 0 0 1 22.56 9M1.42 9a15.91 15.91 0 0 1 4.7-2.88M8.53 16.11a6 6 0 0 1 6.95 0M12 20h.01"/>
+      </svg>
+    </div>
+    <h1>Нет соединения</h1>
+    <p>Проверьте подключение к интернету и попробуйте снова. Данные не кэшируются в целях безопасности.</p>
+    <button onclick="location.reload()">Попробовать снова</button>
+  </div>
+</body>
+</html>
