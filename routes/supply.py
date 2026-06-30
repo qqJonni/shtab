@@ -64,7 +64,7 @@ def register(app):
                     'FROM material_requests mr '
                     'JOIN construction_stages cs ON mr.stage_id = cs.id '
                     'JOIN objects o ON cs.object_id = o.id '
-                    'WHERE mr.contractor_id = ? AND mr.status = "completed" ORDER BY mr.completed_at DESC',
+                    "WHERE mr.contractor_id = ? AND mr.status = 'completed' ORDER BY mr.completed_at DESC",
                     (current_user.organization_id,))
             else:
                 reqs = query_db(
@@ -72,7 +72,7 @@ def register(app):
                     'FROM material_requests mr '
                     'JOIN construction_stages cs ON mr.stage_id = cs.id '
                     'JOIN objects o ON cs.object_id = o.id '
-                    'WHERE mr.contractor_id = ? AND mr.status != "completed" ORDER BY mr.created_at DESC',
+                    "WHERE mr.contractor_id = ? AND mr.status != 'completed' ORDER BY mr.created_at DESC",
                     (current_user.organization_id,))
         elif current_user.role in VIEWERS:
             if tab == 'archive':
@@ -83,7 +83,7 @@ def register(app):
                     'JOIN construction_stages cs ON mr.stage_id = cs.id '
                     'JOIN objects o ON cs.object_id = o.id '
                     'LEFT JOIN organizations org ON mr.contractor_id = org.id '
-                    'WHERE mr.status = "completed" ORDER BY mr.completed_at DESC')
+                    "WHERE mr.status = 'completed' ORDER BY mr.completed_at DESC")
             else:
                 reqs = query_db(
                     'SELECT mr.*, cs.name as stage_name, o.name as object_name, '
@@ -92,7 +92,7 @@ def register(app):
                     'JOIN construction_stages cs ON mr.stage_id = cs.id '
                     'JOIN objects o ON cs.object_id = o.id '
                     'LEFT JOIN organizations org ON mr.contractor_id = org.id '
-                    'WHERE mr.status != "completed" ORDER BY mr.created_at DESC')
+                    "WHERE mr.status != 'completed' ORDER BY mr.created_at DESC")
         else:
             abort(403)
 
@@ -223,12 +223,12 @@ def register(app):
     @role_required('pto', 'admin')
     def supply_request_approve(req_id):
         mr = query_db('SELECT * FROM material_requests WHERE id = ?', (req_id,), one=True)
-        if not mr or mr['status'] != 'submitted' or mr['current_role'] != 'pto':
+        if not mr or mr['status'] != 'submitted' or mr['route_role'] != 'pto':
             abort(403)
 
         comment = request.form.get('comment', '').strip() or None
         db = get_db()
-        db.execute("UPDATE material_requests SET status='approved', current_role='supply' WHERE id=?", (req_id,))
+        db.execute("UPDATE material_requests SET status='approved', route_role='supply' WHERE id=?", (req_id,))
         db.commit()
         _write_history(req_id, 'approved', comment)
 
@@ -248,7 +248,7 @@ def register(app):
     @role_required('pto', 'admin')
     def supply_request_return(req_id):
         mr = query_db('SELECT * FROM material_requests WHERE id = ?', (req_id,), one=True)
-        if not mr or mr['status'] != 'submitted' or mr['current_role'] != 'pto':
+        if not mr or mr['status'] != 'submitted' or mr['route_role'] != 'pto':
             abort(403)
 
         comment = request.form.get('comment', '').strip()
@@ -337,7 +337,7 @@ def register(app):
         if not _is_own_contractor(mr):
             abort(403)
 
-        execute_db("UPDATE material_requests SET status='submitted', current_role='pto' WHERE id=?", (req_id,))
+        execute_db("UPDATE material_requests SET status='submitted', route_role='pto' WHERE id=?", (req_id,))
         _write_history(req_id, 'resubmitted')
 
         pto_users = query_db("SELECT id FROM users WHERE role='pto' AND is_approved=1")

@@ -434,7 +434,7 @@ def register(app):
                     'JOIN substages ss ON dp.substage_id = ss.id '
                     'JOIN construction_stages cs ON ss.stage_id = cs.id '
                     'JOIN objects o ON cs.object_id = o.id '
-                    'WHERE dp.contractor_id = ? AND dp.status = "completed" ORDER BY dp.completed_at DESC',
+                    "WHERE dp.contractor_id = ? AND dp.status = 'completed' ORDER BY dp.completed_at DESC",
                     (current_user.organization_id,))
             else:
                 pkgs = query_db(
@@ -443,7 +443,7 @@ def register(app):
                     'JOIN substages ss ON dp.substage_id = ss.id '
                     'JOIN construction_stages cs ON ss.stage_id = cs.id '
                     'JOIN objects o ON cs.object_id = o.id '
-                    'WHERE dp.contractor_id = ? AND dp.status != "completed" ORDER BY dp.created_at DESC',
+                    "WHERE dp.contractor_id = ? AND dp.status != 'completed' ORDER BY dp.created_at DESC",
                     (current_user.organization_id,))
         elif current_user.role in ('manager', 'admin'):
             if tab == 'archive':
@@ -455,7 +455,7 @@ def register(app):
                     'JOIN construction_stages cs ON ss.stage_id = cs.id '
                     'JOIN objects o ON cs.object_id = o.id '
                     'LEFT JOIN organizations org ON dp.contractor_id = org.id '
-                    'WHERE dp.status = "completed" ORDER BY dp.completed_at DESC')
+                    "WHERE dp.status = 'completed' ORDER BY dp.completed_at DESC")
             else:
                 pkgs = query_db(
                     'SELECT dp.*, ss.name as substage_name, cs.name as stage_name, o.name as object_name, '
@@ -465,7 +465,7 @@ def register(app):
                     'JOIN construction_stages cs ON ss.stage_id = cs.id '
                     'JOIN objects o ON cs.object_id = o.id '
                     'LEFT JOIN organizations org ON dp.contractor_id = org.id '
-                    'WHERE dp.status != "completed" ORDER BY dp.created_at DESC')
+                    "WHERE dp.status != 'completed' ORDER BY dp.created_at DESC")
         elif current_user.role in dict(config.APPROVAL_CHAIN):
             # Согласующие роли: только свои pending + архив
             if tab == 'archive':
@@ -477,7 +477,7 @@ def register(app):
                     'JOIN construction_stages cs ON ss.stage_id = cs.id '
                     'JOIN objects o ON cs.object_id = o.id '
                     'LEFT JOIN organizations org ON dp.contractor_id = org.id '
-                    'WHERE dp.status = "completed" ORDER BY dp.completed_at DESC')
+                    "WHERE dp.status = 'completed' ORDER BY dp.completed_at DESC")
             else:
                 pkgs = query_db(
                     'SELECT dp.*, ss.name as substage_name, cs.name as stage_name, o.name as object_name, '
@@ -488,7 +488,7 @@ def register(app):
                     'JOIN objects o ON cs.object_id = o.id '
                     'LEFT JOIN organizations org ON dp.contractor_id = org.id '
                     'JOIN approval_steps a ON a.package_id = dp.id '
-                    'WHERE a.role = ? AND a.status = "pending" AND dp.status = "in_review" '
+                    "WHERE a.role = ? AND a.status = 'pending' AND dp.status = 'in_review' "
                     'ORDER BY dp.created_at DESC',
                     (current_user.role,))
         else:

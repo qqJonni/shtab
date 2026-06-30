@@ -87,7 +87,7 @@ def _defect_counts_all():
         'in_progress': query_db("SELECT COUNT(*) as c FROM defects WHERE status='in_progress'", one=True)['c'],
         'resolved': query_db("SELECT COUNT(*) as c FROM defects WHERE status='resolved'", one=True)['c'],
         'closed': query_db("SELECT COUNT(*) as c FROM defects WHERE status IN ('closed','verified')", one=True)['c'],
-        'overdue': query_db("SELECT COUNT(*) as c FROM defects WHERE due_date < date('now') AND status NOT IN ('closed','verified')", one=True)['c'],
+        'overdue': query_db("SELECT COUNT(*) as c FROM defects WHERE due_date < to_char(now(),'YYYY-MM-DD') AND status NOT IN ('closed','verified')", one=True)['c'],
     }
 
 
@@ -173,7 +173,7 @@ def register(app):
             substages_not_started += s['sub_not_started']
             substages_overdue += s['sub_overdue']
         pc = _package_counts('pto')
-        mr_pending = query_db("SELECT COUNT(*) as c FROM material_requests WHERE status='submitted' AND current_role='pto'", one=True)['c']
+        mr_pending = query_db("SELECT COUNT(*) as c FROM material_requests WHERE status='submitted' AND route_role='pto'", one=True)['c']
         import config
         return render_template('dashboards/pto.html',
                                stages=stages_list, stages_no_subs=stages_no_subs,
@@ -196,7 +196,7 @@ def register(app):
         my_created = query_db("SELECT COUNT(*) as c FROM defects WHERE reporter_id=?",
                               (current_user.id,), one=True)['c']
         overdue = query_db(
-            "SELECT COUNT(*) as c FROM defects WHERE due_date < date('now') AND status NOT IN ('closed','verified')",
+            "SELECT COUNT(*) as c FROM defects WHERE due_date < to_char(now(),'YYYY-MM-DD') AND status NOT IN ('closed','verified')",
             one=True)['c']
         pc = _package_counts('inspector')
         import config
@@ -288,7 +288,7 @@ def register(app):
         defect_in_progress = query_db("SELECT COUNT(*) as c FROM defects WHERE contractor_id=? AND status='in_progress'",
                                       (org_id,), one=True)['c']
         defect_overdue = query_db(
-            "SELECT COUNT(*) as c FROM defects WHERE contractor_id=? AND due_date < date('now') AND status NOT IN ('closed','verified')",
+            "SELECT COUNT(*) as c FROM defects WHERE contractor_id=? AND due_date < to_char(now(),'YYYY-MM-DD') AND status NOT IN ('closed','verified')",
             (org_id,), one=True)['c']
         pkg_in_review = query_db("SELECT COUNT(*) as c FROM doc_packages WHERE contractor_id=? AND status='in_review'",
                                   (org_id,), one=True)['c']

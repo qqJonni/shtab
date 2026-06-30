@@ -1,5 +1,6 @@
 import os
-import sqlite3
+import psycopg2
+import psycopg2.extras
 from flask import Flask, render_template
 from flask_login import LoginManager, UserMixin
 
@@ -111,21 +112,32 @@ def register_routes(app):
 
 
 def init_db():
-    db = sqlite3.connect(config.DATABASE)
-    db.execute('PRAGMA foreign_keys = ON')
+    conn = psycopg2.connect(config.DATABASE_URL)
+    cur = conn.cursor()
 
-    db.executescript('''
+    # Все даты/timestamps хранятся как TEXT, чтобы не ломать строковые сравнения.
+    # DEFAULT to_char(now(),...) воспроизводит тот же формат, что SQLite писал в TEXT.
+    cur.execute('''
         CREATE TABLE IF NOT EXISTS organizations (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            id SERIAL PRIMARY KEY,
             name TEXT NOT NULL,
             type TEXT NOT NULL CHECK(type IN ('developer', 'contractor')),
             inn TEXT,
             kpp TEXT,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        );
+            address TEXT,
+            ogrn TEXT,
+            okpo TEXT,
+            phone TEXT,
+            email TEXT,
+            rep_position TEXT,
+            rep_name TEXT,
+            created_at TEXT DEFAULT to_char(now(),'YYYY-MM-DD HH24:MI:SS')
+        )
+    ''')
 
+    cur.execute('''
         CREATE TABLE IF NOT EXISTS users (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            id SERIAL PRIMARY KEY,
             username TEXT UNIQUE NOT NULL,
             password_hash TEXT NOT NULL,
             role TEXT NOT NULL,
@@ -133,63 +145,81 @@ def init_db():
             avatar TEXT,
             is_approved INTEGER DEFAULT 0,
             organization_id INTEGER REFERENCES organizations(id),
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        );
+            created_at TEXT DEFAULT to_char(now(),'YYYY-MM-DD HH24:MI:SS')
+        )
+    ''')
 
+    cur.execute('''
         CREATE TABLE IF NOT EXISTS settings (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            id SERIAL PRIMARY KEY,
             key TEXT UNIQUE NOT NULL,
             value TEXT
-        );
+        )
+    ''')
 
+    cur.execute('''
         CREATE TABLE IF NOT EXISTS notifications (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            id SERIAL PRIMARY KEY,
             user_id INTEGER NOT NULL REFERENCES users(id),
             type TEXT,
             title TEXT NOT NULL,
             body TEXT,
             link TEXT,
             is_read INTEGER DEFAULT 0,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        );
+            created_at TEXT DEFAULT to_char(now(),'YYYY-MM-DD HH24:MI:SS')
+        )
+    ''')
 
+    cur.execute('''
         CREATE TABLE IF NOT EXISTS objects (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            id SERIAL PRIMARY KEY,
             name TEXT NOT NULL,
             address TEXT,
             type TEXT,
             status TEXT NOT NULL DEFAULT 'active' CHECK(status IN ('active', 'archived')),
             created_by INTEGER REFERENCES users(id),
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        );
+            created_at TEXT DEFAULT to_char(now(),'YYYY-MM-DD HH24:MI:SS'),
+            construction_name TEXT,
+            construction_address TEXT,
+            cadastral_number TEXT
+        )
+    ''')
 
+    cur.execute('''
         CREATE TABLE IF NOT EXISTS construction_stages (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            id SERIAL PRIMARY KEY,
             object_id INTEGER NOT NULL REFERENCES objects(id) ON DELETE CASCADE,
             name TEXT NOT NULL,
             order_num INTEGER NOT NULL DEFAULT 0,
             description TEXT,
             contractor_id INTEGER REFERENCES organizations(id),
             contractor_status TEXT NOT NULL DEFAULT 'search' CHECK(contractor_status IN ('search', 'assigned')),
-            plan_start_date DATE,
-            plan_end_date DATE,
+            plan_start_date TEXT,
+            plan_end_date TEXT,
             status TEXT NOT NULL DEFAULT 'planned' CHECK(status IN ('planned', 'in_progress', 'done', 'suspended')),
             created_by INTEGER REFERENCES users(id),
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        );
+            created_at TEXT DEFAULT to_char(now(),'YYYY-MM-DD HH24:MI:SS'),
+            contract_number TEXT,
+            contract_date TEXT,
+            contract_amount REAL
+        )
+    ''')
 
+    cur.execute('''
         CREATE TABLE IF NOT EXISTS stage_documents (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            id SERIAL PRIMARY KEY,
             stage_id INTEGER NOT NULL REFERENCES construction_stages(id) ON DELETE CASCADE,
             doc_type TEXT NOT NULL DEFAULT 'other' CHECK(doc_type IN ('contract', 'tech_spec', 'price_doc', 'work_schedule', 'other')),
             title TEXT NOT NULL,
             filename TEXT NOT NULL,
             uploaded_by INTEGER REFERENCES users(id),
-            uploaded_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        );
+            uploaded_at TEXT DEFAULT to_char(now(),'YYYY-MM-DD HH24:MI:SS')
+        )
+    ''')
 
+    cur.execute('''
         CREATE TABLE IF NOT EXISTS substages (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            id SERIAL PRIMARY KEY,
             stage_id INTEGER NOT NULL REFERENCES construction_stages(id) ON DELETE CASCADE,
             name TEXT NOT NULL,
             description TEXT,
@@ -197,65 +227,77 @@ def init_db():
             unit TEXT,
             unit_price REAL,
             total_price REAL,
-            plan_end_date DATE,
+            plan_end_date TEXT,
             status TEXT NOT NULL DEFAULT 'not_started' CHECK(status IN ('not_started', 'in_progress', 'done', 'closed', 'approved')),
             created_by INTEGER REFERENCES users(id),
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            completed_at TIMESTAMP
-        );
+            created_at TEXT DEFAULT to_char(now(),'YYYY-MM-DD HH24:MI:SS'),
+            completed_at TEXT
+        )
+    ''')
 
+    cur.execute('''
         CREATE TABLE IF NOT EXISTS substage_photos (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            id SERIAL PRIMARY KEY,
             substage_id INTEGER NOT NULL REFERENCES substages(id) ON DELETE CASCADE,
             filename TEXT NOT NULL,
             uploaded_by INTEGER REFERENCES users(id),
-            uploaded_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        );
+            uploaded_at TEXT DEFAULT to_char(now(),'YYYY-MM-DD HH24:MI:SS')
+        )
+    ''')
 
+    cur.execute('''
         CREATE TABLE IF NOT EXISTS doc_packages (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            id SERIAL PRIMARY KEY,
             substage_id INTEGER NOT NULL REFERENCES substages(id),
             contractor_id INTEGER REFERENCES organizations(id),
             created_by INTEGER NOT NULL REFERENCES users(id),
             status TEXT NOT NULL DEFAULT 'draft' CHECK(status IN ('draft', 'in_review', 'returned', 'approved', 'completed')),
             return_to_role TEXT,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            submitted_at TIMESTAMP,
-            completed_at TIMESTAMP
-        );
+            created_at TEXT DEFAULT to_char(now(),'YYYY-MM-DD HH24:MI:SS'),
+            submitted_at TEXT,
+            completed_at TEXT
+        )
+    ''')
 
+    cur.execute('''
         CREATE TABLE IF NOT EXISTS package_documents (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            id SERIAL PRIMARY KEY,
             package_id INTEGER NOT NULL REFERENCES doc_packages(id) ON DELETE CASCADE,
             doc_type TEXT NOT NULL DEFAULT 'free_form' CHECK(doc_type IN ('ks2', 'ks3', 'invoice', 'raw_material_report', 'free_form')),
             title TEXT NOT NULL,
             filename TEXT,
             is_generated INTEGER NOT NULL DEFAULT 0,
             data_json TEXT,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        );
+            created_at TEXT DEFAULT to_char(now(),'YYYY-MM-DD HH24:MI:SS')
+        )
+    ''')
 
+    cur.execute('''
         CREATE TABLE IF NOT EXISTS approval_steps (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            id SERIAL PRIMARY KEY,
             package_id INTEGER NOT NULL REFERENCES doc_packages(id) ON DELETE CASCADE,
             step_order INTEGER NOT NULL,
             role TEXT NOT NULL,
             status TEXT NOT NULL DEFAULT 'waiting' CHECK(status IN ('waiting', 'pending', 'approved', 'returned')),
             approver_id INTEGER REFERENCES users(id),
             comment TEXT,
-            acted_at TIMESTAMP
-        );
+            acted_at TEXT
+        )
+    ''')
 
+    cur.execute('''
         CREATE TABLE IF NOT EXISTS defect_types (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            id SERIAL PRIMARY KEY,
             name TEXT NOT NULL,
             order_num INTEGER NOT NULL DEFAULT 0
-        );
+        )
+    ''')
 
+    cur.execute('''
         CREATE TABLE IF NOT EXISTS defects (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            id SERIAL PRIMARY KEY,
             object_id INTEGER NOT NULL REFERENCES objects(id),
-            stage_id INTEGER NOT NULL REFERENCES construction_stages(id),
+            stage_id INTEGER REFERENCES construction_stages(id),
             substage_id INTEGER REFERENCES substages(id),
             title TEXT NOT NULL,
             description TEXT,
@@ -265,61 +307,78 @@ def init_db():
             reporter_id INTEGER NOT NULL REFERENCES users(id),
             responsible_id INTEGER REFERENCES users(id),
             contractor_id INTEGER REFERENCES organizations(id),
-            due_date DATE,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            resolved_at TIMESTAMP,
-            verified_at TIMESTAMP,
-            reopen_count INTEGER NOT NULL DEFAULT 0
-        );
+            due_date TEXT,
+            created_at TEXT DEFAULT to_char(now(),'YYYY-MM-DD HH24:MI:SS'),
+            updated_at TEXT DEFAULT to_char(now(),'YYYY-MM-DD HH24:MI:SS'),
+            resolved_at TEXT,
+            verified_at TEXT,
+            reopen_count INTEGER NOT NULL DEFAULT 0,
+            plan_id INTEGER,
+            pin_x REAL,
+            pin_y REAL
+        )
+    ''')
 
+    cur.execute('''
         CREATE TABLE IF NOT EXISTS defect_photos (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            id SERIAL PRIMARY KEY,
             defect_id INTEGER NOT NULL REFERENCES defects(id) ON DELETE CASCADE,
             filename TEXT NOT NULL,
             photo_type TEXT NOT NULL DEFAULT 'general' CHECK(photo_type IN ('before', 'after', 'general')),
             uploaded_by INTEGER REFERENCES users(id),
-            uploaded_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        );
+            uploaded_at TEXT DEFAULT to_char(now(),'YYYY-MM-DD HH24:MI:SS')
+        )
+    ''')
 
+    cur.execute('''
         CREATE TABLE IF NOT EXISTS defect_history (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            id SERIAL PRIMARY KEY,
             defect_id INTEGER NOT NULL REFERENCES defects(id) ON DELETE CASCADE,
             user_id INTEGER NOT NULL REFERENCES users(id),
             action TEXT NOT NULL,
             old_value TEXT,
             new_value TEXT,
             comment TEXT,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        );
+            created_at TEXT DEFAULT to_char(now(),'YYYY-MM-DD HH24:MI:SS')
+        )
+    ''')
 
+    cur.execute('''
         CREATE TABLE IF NOT EXISTS defect_audio (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            id SERIAL PRIMARY KEY,
             defect_id INTEGER NOT NULL REFERENCES defects(id) ON DELETE CASCADE,
             filename TEXT NOT NULL,
             uploaded_by INTEGER REFERENCES users(id),
-            uploaded_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        );
+            uploaded_at TEXT DEFAULT to_char(now(),'YYYY-MM-DD HH24:MI:SS')
+        )
+    ''')
 
+    cur.execute('''
         CREATE TABLE IF NOT EXISTS journal_entries (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            id SERIAL PRIMARY KEY,
             object_id INTEGER NOT NULL REFERENCES objects(id) ON DELETE CASCADE,
             author_id INTEGER NOT NULL REFERENCES users(id),
-            entry_date DATE NOT NULL,
-            text TEXT NOT NULL,
+            entry_date TEXT NOT NULL,
+            text TEXT NOT NULL DEFAULT '',
             weather TEXT,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        );
+            created_at TEXT DEFAULT to_char(now(),'YYYY-MM-DD HH24:MI:SS'),
+            work_type TEXT,
+            contractor_id INTEGER REFERENCES organizations(id)
+        )
+    ''')
 
+    cur.execute('''
         CREATE TABLE IF NOT EXISTS journal_photos (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            id SERIAL PRIMARY KEY,
             entry_id INTEGER NOT NULL REFERENCES journal_entries(id) ON DELETE CASCADE,
             filename TEXT NOT NULL,
-            uploaded_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        );
+            uploaded_at TEXT DEFAULT to_char(now(),'YYYY-MM-DD HH24:MI:SS')
+        )
+    ''')
 
+    cur.execute('''
         CREATE TABLE IF NOT EXISTS object_plans (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            id SERIAL PRIMARY KEY,
             object_id INTEGER NOT NULL REFERENCES objects(id) ON DELETE CASCADE,
             title TEXT NOT NULL,
             level_label TEXT,
@@ -327,68 +386,86 @@ def init_db():
             file_type TEXT NOT NULL DEFAULT 'image',
             sort_order INTEGER NOT NULL DEFAULT 0,
             uploaded_by INTEGER REFERENCES users(id),
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        );
+            created_at TEXT DEFAULT to_char(now(),'YYYY-MM-DD HH24:MI:SS')
+        )
+    ''')
 
+    cur.execute('''
         CREATE TABLE IF NOT EXISTS material_requests (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            id SERIAL PRIMARY KEY,
             stage_id INTEGER NOT NULL REFERENCES construction_stages(id),
             substage_id INTEGER REFERENCES substages(id),
             contractor_id INTEGER REFERENCES organizations(id),
             requested_by INTEGER NOT NULL REFERENCES users(id),
             status TEXT NOT NULL DEFAULT 'submitted' CHECK(status IN ('submitted', 'returned', 'approved', 'processing', 'completed')),
-            current_role TEXT NOT NULL DEFAULT 'pto' CHECK(current_role IN ('pto', 'supply')),
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            completed_at TIMESTAMP
-        );
+            route_role TEXT NOT NULL DEFAULT 'pto' CHECK(route_role IN ('pto', 'supply')),
+            created_at TEXT DEFAULT to_char(now(),'YYYY-MM-DD HH24:MI:SS'),
+            updated_at TEXT DEFAULT to_char(now(),'YYYY-MM-DD HH24:MI:SS'),
+            completed_at TEXT
+        )
+    ''')
 
+    cur.execute('''
         CREATE TABLE IF NOT EXISTS material_request_items (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            id SERIAL PRIMARY KEY,
             request_id INTEGER NOT NULL REFERENCES material_requests(id) ON DELETE CASCADE,
             material_name TEXT NOT NULL,
             unit TEXT,
             quantity REAL,
             price REAL,
             comment TEXT
-        );
+        )
+    ''')
 
+    cur.execute('''
         CREATE TABLE IF NOT EXISTS material_request_history (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            id SERIAL PRIMARY KEY,
             request_id INTEGER NOT NULL REFERENCES material_requests(id) ON DELETE CASCADE,
             user_id INTEGER NOT NULL REFERENCES users(id),
             action TEXT NOT NULL,
             comment TEXT,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        );
+            created_at TEXT DEFAULT to_char(now(),'YYYY-MM-DD HH24:MI:SS')
+        )
+    ''')
 
+    cur.execute('''
         CREATE TABLE IF NOT EXISTS guest_tokens (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            id SERIAL PRIMARY KEY,
             object_id INTEGER,
             token TEXT UNIQUE NOT NULL,
             created_by INTEGER REFERENCES users(id),
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        );
+            created_at TEXT DEFAULT to_char(now(),'YYYY-MM-DD HH24:MI:SS')
+        )
     ''')
 
-    run_migrations(db)
-    _seed(db)
-    db.close()
+    conn.commit()
+    cur.close()
+
+    run_migrations(conn)
+    _seed(conn)
+    conn.close()
 
 
-def _seed(db):
-    count = db.execute('SELECT COUNT(*) FROM users').fetchone()[0]
-    if count > 0:
+def _seed(conn):
+    cur = conn.cursor()
+    cur.execute('SELECT COUNT(*) FROM users')
+    if cur.fetchone()[0] > 0:
+        cur.close()
         return
 
     from werkzeug.security import generate_password_hash
 
-    db.execute("INSERT INTO organizations (name, type, inn) VALUES (?, 'developer', '5900000001')",
-               ('ГК Федерация',))
-    db.execute("INSERT INTO organizations (name, type, inn) VALUES (?, 'contractor', '5900000002')",
-               ('СтройМонтаж',))
-    dev_id = db.execute("SELECT id FROM organizations WHERE type='developer'").fetchone()[0]
-    con_id = db.execute("SELECT id FROM organizations WHERE type='contractor'").fetchone()[0]
+    cur.execute(
+        "INSERT INTO organizations (name, type, inn) VALUES (%s, 'developer', '5900000001')",
+        ('ГК Федерация',))
+    cur.execute(
+        "INSERT INTO organizations (name, type, inn) VALUES (%s, 'contractor', '5900000002')",
+        ('СтройМонтаж',))
+
+    cur.execute("SELECT id FROM organizations WHERE type='developer'")
+    dev_id = cur.fetchone()[0]
+    cur.execute("SELECT id FROM organizations WHERE type='contractor'")
+    con_id = cur.fetchone()[0]
 
     seed_users = [
         ('admin',      'admin',      'Админов Админ',        'admin',      None),
@@ -401,101 +478,97 @@ def _seed(db):
         ('contractor', 'contractor', 'Подрядчиков Михаил',  'contractor', con_id),
     ]
     for username, role, full_name, password, org_id in seed_users:
-        db.execute(
+        cur.execute(
             'INSERT INTO users (username, password_hash, role, full_name, is_approved, organization_id) '
-            'VALUES (?, ?, ?, ?, 1, ?)',
+            'VALUES (%s, %s, %s, %s, 1, %s)',
             (username, generate_password_hash(password), role, full_name, org_id),
         )
-    manager_id = db.execute("SELECT id FROM users WHERE username='manager'").fetchone()[0]
-    contractor_id = db.execute("SELECT id FROM users WHERE username='contractor'").fetchone()[0]
-    inspector_id = db.execute("SELECT id FROM users WHERE username='inspector'").fetchone()[0]
+
+    cur.execute("SELECT id FROM users WHERE username='manager'")
+    manager_id = cur.fetchone()[0]
+    cur.execute("SELECT id FROM users WHERE username='contractor'")
+    contractor_id = cur.fetchone()[0]
+    cur.execute("SELECT id FROM users WHERE username='inspector'")
+    inspector_id = cur.fetchone()[0]
 
     defect_types = [
         'Отделка', 'Электрика', 'Сантехника', 'Окна/двери',
         'Стены/потолки', 'Полы', 'Кровля', 'Фасад', 'Прочее',
     ]
     for i, dt in enumerate(defect_types, 1):
-        db.execute('INSERT INTO defect_types (name, order_num) VALUES (?, ?)', (dt, i))
+        cur.execute('INSERT INTO defect_types (name, order_num) VALUES (%s, %s)', (dt, i))
+
+    # Настройка НДС по умолчанию
+    cur.execute(
+        "INSERT INTO settings (key, value) VALUES ('vat_rate', '20') ON CONFLICT (key) DO NOTHING")
 
     test_notifications = [
-        (manager_id, 'system', 'Добро пожаловать в ШТАБ', 'Система готова к работе. Создайте первый объект.', '/dashboard'),
-        (manager_id, 'approval', 'Новый пакет на согласование', 'Подрядчик «СтройМонтаж» отправил пакет документов по подэтапу «Монолитные работы».', '/dashboard'),
-        (contractor_id, 'defect', 'Новое замечание', 'Технадзор выявил замечание: трещина в перекрытии 3-го этажа.', '/dashboard'),
-        (inspector_id, 'system', 'Добро пожаловать в ШТАБ', 'Вы назначены технадзором. Проверяйте ход работ и выдавайте замечания.', '/dashboard'),
+        (manager_id,    'system',   'Добро пожаловать в ШТАБ', 'Система готова к работе. Создайте первый объект.', '/dashboard'),
+        (manager_id,    'approval', 'Новый пакет на согласование', 'Подрядчик «СтройМонтаж» отправил пакет документов.', '/dashboard'),
+        (contractor_id, 'defect',   'Новое замечание', 'Технадзор выявил замечание: трещина в перекрытии 3-го этажа.', '/dashboard'),
+        (inspector_id,  'system',   'Добро пожаловать в ШТАБ', 'Вы назначены технадзором. Проверяйте ход работ.', '/dashboard'),
     ]
     for uid, ntype, title, body, link in test_notifications:
-        db.execute(
-            'INSERT INTO notifications (user_id, type, title, body, link) VALUES (?, ?, ?, ?, ?)',
+        cur.execute(
+            'INSERT INTO notifications (user_id, type, title, body, link) VALUES (%s, %s, %s, %s, %s)',
             (uid, ntype, title, body, link),
         )
 
-    db.commit()
+    conn.commit()
+    cur.close()
 
 
-def run_migrations(db):
+def run_migrations(conn):
+    """Идемпотентные миграции через information_schema (не PRAGMA)."""
+    cur = conn.cursor()
+
     def _col_exists(table, col):
-        cols = [r[1] for r in db.execute(f"PRAGMA table_info({table})").fetchall()]
-        return col in cols
+        cur.execute(
+            'SELECT 1 FROM information_schema.columns '
+            'WHERE table_name = %s AND column_name = %s',
+            (table, col))
+        return cur.fetchone() is not None
 
-    # M4-S6: реквизиты организаций
+    # Все колонки уже включены в CREATE TABLE выше (init_db написан финально).
+    # Этот блок остаётся для деплоя на существующую Postgres БД,
+    # где таблицы могут быть созданы старой версией без этих колонок.
+
     for col, typedef in [
         ('address', 'TEXT'), ('ogrn', 'TEXT'), ('okpo', 'TEXT'),
         ('phone', 'TEXT'), ('rep_position', 'TEXT'), ('rep_name', 'TEXT'),
         ('email', 'TEXT'),
     ]:
         if not _col_exists('organizations', col):
-            db.execute(f'ALTER TABLE organizations ADD COLUMN {col} {typedef}')
+            cur.execute(f'ALTER TABLE organizations ADD COLUMN {col} {typedef}')
 
-    # M4-S6: реквизиты объектов
     for col, typedef in [
         ('construction_name', 'TEXT'), ('construction_address', 'TEXT'),
         ('cadastral_number', 'TEXT'),
     ]:
         if not _col_exists('objects', col):
-            db.execute(f'ALTER TABLE objects ADD COLUMN {col} {typedef}')
+            cur.execute(f'ALTER TABLE objects ADD COLUMN {col} {typedef}')
 
-    # M4-S6: договорные данные этапа
     for col, typedef in [
-        ('contract_number', 'TEXT'), ('contract_date', 'DATE'),
+        ('contract_number', 'TEXT'), ('contract_date', 'TEXT'),
         ('contract_amount', 'REAL'),
     ]:
         if not _col_exists('construction_stages', col):
-            db.execute(f'ALTER TABLE construction_stages ADD COLUMN {col} {typedef}')
+            cur.execute(f'ALTER TABLE construction_stages ADD COLUMN {col} {typedef}')
 
-    # M4-S6: дефолтная ставка НДС
-    existing = db.execute("SELECT id FROM settings WHERE key='vat_rate'").fetchone()
-    if not existing:
-        db.execute("INSERT INTO settings (key, value) VALUES ('vat_rate', '20')")
-
-    # M6-T: добавить price_doc в stage_documents.doc_type CHECK
-    check_sql = db.execute("SELECT sql FROM sqlite_master WHERE type='table' AND name='stage_documents'").fetchone()
-    if check_sql and 'price_doc' not in (check_sql[0] or ''):
-        db.executescript('''
-            CREATE TABLE IF NOT EXISTS stage_documents_new (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                stage_id INTEGER NOT NULL REFERENCES construction_stages(id) ON DELETE CASCADE,
-                doc_type TEXT NOT NULL DEFAULT 'other' CHECK(doc_type IN ('contract', 'tech_spec', 'price_doc', 'work_schedule', 'other')),
-                title TEXT NOT NULL,
-                filename TEXT NOT NULL,
-                uploaded_by INTEGER REFERENCES users(id),
-                uploaded_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            );
-            INSERT INTO stage_documents_new SELECT * FROM stage_documents;
-            DROP TABLE stage_documents;
-            ALTER TABLE stage_documents_new RENAME TO stage_documents;
-        ''')
-
-    # M7A: plan_id, pin_x, pin_y в defects
     for col, typedef in [('plan_id', 'INTEGER'), ('pin_x', 'REAL'), ('pin_y', 'REAL')]:
         if not _col_exists('defects', col):
-            db.execute(f'ALTER TABLE defects ADD COLUMN {col} {typedef}')
+            cur.execute(f'ALTER TABLE defects ADD COLUMN {col} {typedef}')
 
-    # журнал: вид работ и подрядчик
     for col, typedef in [('work_type', 'TEXT'), ('contractor_id', 'INTEGER')]:
         if not _col_exists('journal_entries', col):
-            db.execute(f'ALTER TABLE journal_entries ADD COLUMN {col} {typedef}')
+            cur.execute(f'ALTER TABLE journal_entries ADD COLUMN {col} {typedef}')
 
-    db.commit()
+    # Настройка НДС (идемпотентно)
+    cur.execute(
+        "INSERT INTO settings (key, value) VALUES ('vat_rate', '20') ON CONFLICT (key) DO NOTHING")
+
+    conn.commit()
+    cur.close()
 
 
 for folder in (config.UPLOAD_FOLDER, config.DOCS_FOLDER, config.AVATARS_FOLDER, config.DEFECTS_FOLDER, config.PACKAGES_FOLDER, config.PLANS_FOLDER, config.JOURNAL_FOLDER):

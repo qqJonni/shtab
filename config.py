@@ -6,7 +6,8 @@ load_dotenv()
 BASE_DIR = os.path.abspath(os.path.dirname(__file__))
 
 SECRET_KEY = os.environ.get('SECRET_KEY', 'dev-secret-change-me')
-DATABASE = os.path.join(BASE_DIR, 'shtab.db')
+
+DATABASE_URL = os.environ.get('DATABASE_URL', 'postgresql://localhost/shtab')
 
 ROLES = {
     'admin':      'Администратор',

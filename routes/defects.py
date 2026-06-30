@@ -84,7 +84,7 @@ def register(app):
             where.append('d.type_id = ?')
             args.append(int(f_type))
         if f_overdue:
-            where.append("d.due_date < date('now') AND d.status NOT IN ('closed', 'verified')")
+            where.append("d.due_date < to_char(now(),'YYYY-MM-DD') AND d.status NOT IN ('closed', 'verified')")
 
         defects = _defects_base_query(where, args)
 
