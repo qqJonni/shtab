@@ -19,6 +19,10 @@
           <button class="btn btn-sm btn-outline-success"><i class="bi bi-arrow-counterclockwise me-1"></i>Восстановить</button>
         {% endif %}
       </form>
+      <form method="post" action="{{ url_for('object_delete', obj_id=obj.id) }}" class="d-inline"
+            onsubmit="return confirm('Удалить объект «{{ obj.name }}» безвозвратно?\nВсе этапы, подэтапы, замечания и документы будут удалены.')">
+        <button class="btn btn-sm btn-outline-danger"><i class="bi bi-trash me-1"></i>Удалить</button>
+      </form>
     {% endif %}
   </div>
 </div>

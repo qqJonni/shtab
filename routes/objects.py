@@ -3,7 +3,7 @@ from flask import render_template, redirect, url_for, request, flash, abort, sen
 from flask_login import login_required, current_user
 
 import config
-from db import query_db, execute_db, notify
+from db import query_db, execute_db, get_db, notify
 from helpers import role_required, save_stage_document, save_substage_photo, save_plan_file
 
 VIEWERS = ('manager', 'admin', 'pto', 'inspector', 'foreman')
@@ -77,7 +77,6 @@ def register(app):
             if org_type not in ('developer', 'contractor'):
                 org_type = 'contractor'
 
-            from db import get_db
             db = get_db()
             cur = db.execute(
                 'INSERT INTO organizations (name, type, inn, kpp, address, ogrn, okpo, phone, email, rep_position, rep_name) '
@@ -156,7 +155,6 @@ def register(app):
             links.append({'icon': 'bi-box-seam', 'label': 'Заявки на материал', 'count': cnt, 'action': 'Открепить'})
 
         if request.method == 'POST':
-            from db import get_db
             db = get_db()
             db.execute('UPDATE users SET organization_id = NULL WHERE organization_id = ?', (org_id,))
             db.execute("UPDATE construction_stages SET contractor_id = NULL, contractor_status = 'search' WHERE contractor_id = ?", (org_id,))
@@ -302,6 +300,19 @@ def register(app):
         execute_db('UPDATE objects SET status = ? WHERE id = ?', (new_status, obj_id))
         label = 'восстановлен' if new_status == 'active' else 'архивирован'
         flash(f'Объект {label}.', 'success')
+        return redirect(url_for('objects_list'))
+
+    @app.route('/objects/<int:obj_id>/delete', methods=['POST'])
+    @login_required
+    @role_required(*EDITORS)
+    def object_delete(obj_id):
+        obj = query_db('SELECT * FROM objects WHERE id = ?', (obj_id,), one=True)
+        if not obj:
+            abort(404)
+        db = get_db()
+        db.execute('DELETE FROM objects WHERE id = ?', (obj_id,))
+        db.commit()
+        flash(f'Объект «{obj["name"]}» удалён.', 'success')
         return redirect(url_for('objects_list'))
 
     # ═══ Планы объекта ═══
@@ -466,7 +477,6 @@ def register(app):
                 (stage['object_id'], stage['order_num']), one=True)
 
         if neighbor:
-            from db import get_db
             db = get_db()
             db.execute('UPDATE construction_stages SET order_num = ? WHERE id = ?',
                        (neighbor['order_num'], stage['id']))
