@@ -73,7 +73,7 @@
 </div>
 
 {# Действия ПТО #}
-{% if current_user.role in ('pto', 'admin') and mr.status == 'submitted' and mr.current_role == 'pto' %}
+{% if current_user.role in ('pto', 'admin') and mr.status == 'submitted' and mr.route_role == 'pto' %}
   <div class="card mb-4">
     <div class="card-body p-4">
       <h6 class="fw-bold mb-3">Проверка заявки</h6>
