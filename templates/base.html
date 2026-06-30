@@ -378,6 +378,7 @@ if ('serviceWorker' in navigator && location.protocol === 'https:') {
     .catch(function(e) { console.warn('SW registration failed:', e); });
 }
 </script>
+<script src="{{ url_for('static', filename='js/pwa-install.js') }}" defer></script>
 {% endif %}
 </body>
 </html>
