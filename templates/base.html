@@ -7,6 +7,7 @@
   <link rel="icon" href="{{ url_for('static', filename='favicon.ico') }}" type="image/x-icon">
   <link rel="manifest" href="/manifest.webmanifest">
   <meta name="theme-color" content="#1E293B">
+  <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-title" content="ШТАБ">
   <link rel="apple-touch-icon" href="/static/icons/apple-touch-icon.png">
   <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -371,6 +372,7 @@
 {% block scripts %}{% endblock %}
 {% if current_user.is_authenticated %}
 <script src="{{ url_for('static', filename='js/pwa-install.js') }}" defer></script>
+<script src="{{ url_for('static', filename='js/push-init.js') }}" defer></script>
 {% endif %}
 </body>
 </html>

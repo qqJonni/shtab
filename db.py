@@ -142,3 +142,38 @@ def notify(user_id, type, title, body='', link=''):
         (user_id, type, title, body, link),
     )
     db.commit()
+    _send_web_push_to_user(user_id, title, body, link)
+
+
+def _send_web_push_to_user(user_id, title, body, link):
+    """Send Web Push to all registered subscriptions for user. Never raises."""
+    try:
+        import os, json
+        from pywebpush import webpush, WebPushException
+        private_key = os.environ.get('VAPID_PRIVATE_KEY', '')
+        email = os.environ.get('VAPID_EMAIL', 'admin@shtab-crm.ru')
+        if not private_key:
+            return
+        db = get_db()
+        subs = db.execute(
+            'SELECT id, endpoint, p256dh, auth FROM push_subscriptions WHERE user_id = ?',
+            (user_id,)
+        ).fetchall()
+        for sub in subs:
+            try:
+                webpush(
+                    subscription_info={
+                        'endpoint': sub['endpoint'],
+                        'keys': {'p256dh': sub['p256dh'], 'auth': sub['auth']},
+                    },
+                    data=json.dumps({'title': title, 'body': body, 'link': link}),
+                    vapid_private_key=private_key,
+                    vapid_claims={'sub': f'mailto:{email}'},
+                    timeout=5,
+                )
+            except WebPushException as e:
+                if e.response is not None and e.response.status_code in (404, 410):
+                    db.execute('DELETE FROM push_subscriptions WHERE id = ?', (sub['id'],))
+                    db.commit()
+    except Exception:
+        pass

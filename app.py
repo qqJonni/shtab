@@ -439,6 +439,18 @@ def init_db():
         )
     ''')
 
+    cur.execute('''
+        CREATE TABLE IF NOT EXISTS push_subscriptions (
+            id SERIAL PRIMARY KEY,
+            user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+            endpoint TEXT NOT NULL,
+            p256dh TEXT NOT NULL,
+            auth TEXT NOT NULL,
+            created_at TEXT DEFAULT to_char(now(),'YYYY-MM-DD HH24:MI:SS'),
+            UNIQUE(user_id, endpoint)
+        )
+    ''')
+
     conn.commit()
     cur.close()
 
