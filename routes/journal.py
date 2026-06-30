@@ -255,7 +255,7 @@ def _build_object_pdf(obj, stages, progress, total_subs, total_done,
     ]
 
     thin = colors.Color(0.8, 0.8, 0.8)
-    t = Table(summary, colWidths=[70*mm, 100*mm])
+    t = Table(summary, colWidths=[90*mm, 90*mm])
     t.setStyle(TableStyle([
         ('FONTNAME', (0, 0), (-1, -1), mf), ('FONTSIZE', (0, 0), (-1, -1), 9),
         ('GRID', (0, 0), (-1, -1), 0.5, thin),
@@ -280,12 +280,13 @@ def _build_object_pdf(obj, stages, progress, total_subs, total_done,
         if not dates:
             dates = '—'
         stg_data.append([
-            str(i), Paragraph(s['name'], ss), s['contractor'],
-            status_labels.get(s['status'], s['status']), dates,
-            f"{s['progress']}% ({s['sub_done']}/{s['sub_total']})" if s['sub_total'] else '—',
+            str(i), Paragraph(s['name'], ss), Paragraph(s['contractor'] or '—', ss),
+            Paragraph(status_labels.get(s['status'], s['status']), ss),
+            Paragraph(dates, ss),
+            Paragraph(f"{s['progress']}% ({s['sub_done']}/{s['sub_total']})" if s['sub_total'] else '—', ss),
         ])
 
-    t2 = Table(stg_data, colWidths=[8*mm, 45*mm, 35*mm, 25*mm, 35*mm, 25*mm])
+    t2 = Table(stg_data, colWidths=[8*mm, 50*mm, 38*mm, 24*mm, 32*mm, 28*mm])
     t2.setStyle(TableStyle([
         ('FONTNAME', (0, 0), (-1, -1), mf), ('FONTSIZE', (0, 0), (-1, -1), 8),
         ('GRID', (0, 0), (-1, -1), 0.5, thin),
@@ -313,7 +314,7 @@ def _build_object_pdf(obj, stages, progress, total_subs, total_done,
                 '',
             ])
 
-        tj = Table(j_data, colWidths=[8*mm, 25*mm, 55*mm, 55*mm, 35*mm])
+        tj = Table(j_data, colWidths=[8*mm, 22*mm, 62*mm, 58*mm, 30*mm])
         tj.setStyle(TableStyle([
             ('FONTNAME', (0, 0), (-1, -1), mf), ('FONTSIZE', (0, 0), (-1, -1), 8),
             ('GRID', (0, 0), (-1, -1), 0.5, thin),
