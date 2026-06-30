@@ -11,7 +11,9 @@
 <div class="d-flex justify-content-between align-items-center mb-3">
   <h4 class="fw-bold mb-0">Строительный журнал</h4>
   {% if current_user.role in ('foreman', 'inspector', 'manager', 'pto', 'admin') %}
-    <a href="{{ url_for('journal_add', obj_id=obj.id) }}" class="btn btn-primary btn-sm"><i class="bi bi-plus-lg me-1"></i>Новая запись</a>
+    <a href="{{ url_for('journal_add', obj_id=obj.id) }}" class="btn btn-primary btn-sm">
+      <i class="bi bi-plus-lg me-1"></i>Новая запись
+    </a>
   {% endif %}
 </div>
 
@@ -23,52 +25,86 @@
     </div>
   </div>
 {% else %}
-  {% set current_date = [None] %}
-  {% for e in entries %}
-    {% if e.entry_date != current_date[0] %}
-      {% if current_date.append(e.entry_date) %}{% endif %}
-      {% if current_date.pop(0) is not none %}{% endif %}
-      <div class="d-flex align-items-center gap-2 mb-2 {% if not loop.first %}mt-4{% endif %}">
-        <div style="font-size:13px;font-weight:600;color:var(--text-secondary)"><i class="bi bi-calendar3 me-1"></i>{{ e.entry_date }}</div>
-        <hr class="flex-grow-1 m-0" style="border-color:var(--border)">
-      </div>
-    {% endif %}
-
-    <div class="card mb-3">
-      <div class="card-body p-4">
-        <div class="d-flex justify-content-between align-items-start mb-2">
-          <div>
-            <span class="fw-medium" style="font-size:14px">{{ e.author_name or '—' }}</span>
-            <span class="badge badge-pending ms-1" style="font-size:10px">{{ ROLES.get(e.author_role, '') }}</span>
-            {% if e.weather %}
-              <span class="text-muted ms-2" style="font-size:12px"><i class="bi bi-cloud-sun me-1"></i>{{ e.weather }}</span>
-            {% endif %}
-          </div>
-          {% if e.author_id == current_user.id or current_user.role in ('manager', 'admin') %}
-          <div class="d-flex gap-1">
-            <a href="{{ url_for('journal_edit', entry_id=e.id) }}" class="btn btn-sm btn-outline-primary py-0 px-1"><i class="bi bi-pencil"></i></a>
-            <form method="post" action="{{ url_for('journal_delete', entry_id=e.id) }}" class="d-inline"
-                  onsubmit="return confirm('Удалить запись?')">
-              <button class="btn btn-sm btn-outline-danger py-0 px-1"><i class="bi bi-trash"></i></button>
-            </form>
-          </div>
-          {% endif %}
-        </div>
-        <div style="font-size:14px;white-space:pre-line;line-height:1.5">{{ e.text }}</div>
-        {% if e.photos %}
-          <div class="row g-2 mt-2">
-            {% for p in e.photos %}
-            <div class="col-4 col-sm-3 col-md-2">
-              <div class="photo-thumb-wrap">
-                <img src="{{ url_for('static', filename='journal/' + e.id|string + '/' + p.filename) }}" class="gallery-img">
+  <div class="card">
+    <div class="table-responsive">
+      <table class="table table-hover mb-0">
+        <thead>
+          <tr>
+            <th style="width:44px" class="text-center">№</th>
+            <th style="width:110px">Дата</th>
+            <th>Вид работ</th>
+            <th style="width:180px">Подрядчик</th>
+            <th style="width:130px">Погода</th>
+            <th style="width:100px">Автор</th>
+            <th style="width:72px"></th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for e in entries %}
+          <tr class="align-middle {% if e.photos %}journal-has-photos{% endif %}"
+              style="cursor:pointer" onclick="toggleNotes('row-{{ e.id }}')">
+            <td class="text-center text-muted" style="font-size:13px">{{ loop.revindex }}</td>
+            <td style="font-size:13px;white-space:nowrap">{{ e.entry_date }}</td>
+            <td>
+              <div style="font-size:13px;font-weight:500">{{ e.work_type or '—' }}</div>
+              {% if e.text %}
+                <div class="text-muted" style="font-size:12px">
+                  {{ e.text[:80] }}{% if e.text|length > 80 %}…{% endif %}
+                </div>
+              {% endif %}
+            </td>
+            <td style="font-size:13px">{{ e.contractor_name or '—' }}</td>
+            <td style="font-size:13px">
+              {% if e.weather %}<i class="bi bi-cloud-sun me-1 text-muted"></i>{{ e.weather }}{% else %}—{% endif %}
+            </td>
+            <td>
+              <span style="font-size:12px;color:var(--text-secondary)">{{ e.author_name or '—' }}</span>
+            </td>
+            <td onclick="event.stopPropagation()">
+              {% if e.author_id == current_user.id or current_user.role in ('manager', 'admin') %}
+              <div class="d-flex gap-1 justify-content-end">
+                <a href="{{ url_for('journal_edit', entry_id=e.id) }}"
+                   class="btn btn-sm btn-outline-primary py-0 px-1"><i class="bi bi-pencil"></i></a>
+                <form method="post" action="{{ url_for('journal_delete', entry_id=e.id) }}" class="d-inline"
+                      onsubmit="return confirm('Удалить запись?')">
+                  <button class="btn btn-sm btn-outline-danger py-0 px-1"><i class="bi bi-trash"></i></button>
+                </form>
               </div>
-            </div>
-            {% endfor %}
-          </div>
-        {% endif %}
-        <div class="text-muted mt-2" style="font-size:11px">{{ e.created_at[:16] if e.created_at else '' }}</div>
-      </div>
+              {% endif %}
+            </td>
+          </tr>
+          {# Раскрывающаяся строка с полным текстом и фото #}
+          <tr id="row-{{ e.id }}" style="display:none;background:var(--bg-main)">
+            <td colspan="7" class="px-4 py-3">
+              {% if e.text %}
+                <div style="font-size:13px;white-space:pre-line;line-height:1.6;margin-bottom:{% if e.photos %}12px{% else %}0{% endif %}">{{ e.text }}</div>
+              {% endif %}
+              {% if e.photos %}
+                <div class="row g-2">
+                  {% for p in e.photos %}
+                  <div class="col-4 col-sm-3 col-md-2">
+                    <div class="photo-thumb-wrap">
+                      <img src="{{ url_for('static', filename='journal/' + e.id|string + '/' + p.filename) }}" class="gallery-img">
+                    </div>
+                  </div>
+                  {% endfor %}
+                </div>
+              {% endif %}
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
     </div>
-  {% endfor %}
+  </div>
 {% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+function toggleNotes(rowId) {
+  var row = document.getElementById(rowId);
+  if (row) row.style.display = row.style.display === 'none' ? '' : 'none';
+}
+</script>
 {% endblock %}

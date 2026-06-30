@@ -9,25 +9,37 @@
 </div>
 
 <div class="row justify-content-center">
-  <div class="col-lg-7">
+  <div class="col-lg-8">
     <div class="card">
       <div class="card-body p-4">
         <h5 class="fw-bold mb-4">{{ 'Редактировать запись' if entry else 'Новая запись' }}</h5>
         <form method="post" enctype="multipart/form-data">
           <div class="row g-3 mb-3">
-            <div class="col-sm-6">
+            <div class="col-sm-4">
               <label class="form-label">Дата *</label>
-              <input type="date" name="entry_date" class="form-control" value="{{ entry.entry_date if entry else '' }}" required>
+              <input type="date" name="entry_date" class="form-control"
+                     value="{{ entry.entry_date if entry else '' }}" required>
             </div>
-            <div class="col-sm-6">
-              <label class="form-label">Погода</label>
-              <input type="text" name="weather" class="form-control" value="{{ entry.weather if entry and entry.weather else '' }}" placeholder="Ясно, +22°C">
+            <div class="col-sm-4">
+              <label class="form-label">Подрядчик</label>
+              <select name="contractor_id" class="form-select">
+                <option value="">— не указан —</option>
+                {% for c in contractors %}
+                  <option value="{{ c.id }}"
+                    {% if entry and entry.contractor_id == c.id %}selected{% endif %}>
+                    {{ c.name }}
+                  </option>
+                {% endfor %}
+              </select>
             </div>
           </div>
           <div class="mb-3">
-            <label class="form-label">Запись *</label>
-            <textarea name="text" class="form-control" rows="5" required placeholder="Описание выполненных работ, события на площадке...">{{ entry.text if entry else '' }}</textarea>
+            <label class="form-label">Вид работ</label>
+            <input type="text" name="work_type" class="form-control"
+                   value="{{ entry.work_type if entry and entry.work_type else '' }}"
+                   placeholder="Устройство стяжки, монтаж перегородок…">
           </div>
+
           <div class="mb-4">
             <label class="form-label">Фото/видео</label>
             <input type="file" name="photos" class="form-control" accept="image/*,video/*" multiple>
@@ -47,7 +59,9 @@
             </div>
           {% endif %}
           <div class="d-flex gap-2">
-            <button type="submit" class="btn btn-primary"><i class="bi bi-check-lg me-1"></i>{{ 'Сохранить' if entry else 'Добавить' }}</button>
+            <button type="submit" class="btn btn-primary">
+              <i class="bi bi-check-lg me-1"></i>{{ 'Сохранить' if entry else 'Добавить' }}
+            </button>
             <a href="{{ url_for('journal_list', obj_id=obj.id) }}" class="btn btn-outline-secondary">Отмена</a>
           </div>
         </form>

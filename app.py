@@ -490,6 +490,11 @@ def run_migrations(db):
         if not _col_exists('defects', col):
             db.execute(f'ALTER TABLE defects ADD COLUMN {col} {typedef}')
 
+    # журнал: вид работ и подрядчик
+    for col, typedef in [('work_type', 'TEXT'), ('contractor_id', 'INTEGER')]:
+        if not _col_exists('journal_entries', col):
+            db.execute(f'ALTER TABLE journal_entries ADD COLUMN {col} {typedef}')
+
     db.commit()
 
 

@@ -36,7 +36,7 @@ def _defects_base_query(where_clauses=None, args=None):
         f'org.name as contractor_name '
         f'FROM defects d '
         f'JOIN objects o ON d.object_id = o.id '
-        f'JOIN construction_stages cs ON d.stage_id = cs.id '
+        f'LEFT JOIN construction_stages cs ON d.stage_id = cs.id '
         f'LEFT JOIN defect_types dt ON d.type_id = dt.id '
         f'LEFT JOIN users u ON d.reporter_id = u.id '
         f'LEFT JOIN organizations org ON d.contractor_id = org.id '
@@ -133,8 +133,8 @@ def register(app):
             if not stage:
                 abort(404)
             contractor_id = stage['contractor_id']
-
             plan_id = request.form.get('plan_id', '').strip() or None
+
             pin_x = request.form.get('pin_x', '').strip() or None
             pin_y = request.form.get('pin_y', '').strip() or None
             try:
@@ -175,12 +175,13 @@ def register(app):
             # Уведомить подрядчика
             if contractor_id:
                 obj = query_db('SELECT name FROM objects WHERE id = ?', (object_id,), one=True)
+                stage_name = stage['name']
                 users = query_db('SELECT id FROM users WHERE organization_id = ? AND is_approved = 1',
                                  (contractor_id,))
                 for u in users:
                     notify(u['id'], 'defect',
                            f'Новое замечание: {title}',
-                           f'Замечание на объекте «{obj["name"]}», этап «{stage["name"]}».',
+                           f'Замечание на объекте «{obj["name"]}», этап «{stage_name}».',
                            f'/defects/{defect_id}')
 
             flash('Замечание создано.', 'success')
@@ -204,7 +205,7 @@ def register(app):
             'u.full_name as reporter_name, org.name as contractor_name '
             'FROM defects d '
             'JOIN objects o ON d.object_id = o.id '
-            'JOIN construction_stages cs ON d.stage_id = cs.id '
+            'LEFT JOIN construction_stages cs ON d.stage_id = cs.id '
             'LEFT JOIN substages ss ON d.substage_id = ss.id '
             'LEFT JOIN defect_types dt ON d.type_id = dt.id '
             'LEFT JOIN users u ON d.reporter_id = u.id '
@@ -466,7 +467,10 @@ def register(app):
     @login_required
     def api_stages_by_object(object_id):
         stages = query_db(
-            'SELECT id, name FROM construction_stages WHERE object_id = ? ORDER BY order_num',
+            'SELECT cs.id, cs.name, cs.contractor_id, org.name as contractor_name '
+            'FROM construction_stages cs '
+            'LEFT JOIN organizations org ON cs.contractor_id = org.id '
+            'WHERE cs.object_id = ? ORDER BY cs.order_num',
             (object_id,))
         return jsonify([dict(s) for s in stages])
 

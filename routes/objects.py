@@ -354,7 +354,7 @@ def register(app):
         execute_db('UPDATE defects SET plan_id=NULL, pin_x=NULL, pin_y=NULL WHERE plan_id=?', (plan_id,))
         execute_db('DELETE FROM object_plans WHERE id=?', (plan_id,))
         flash('План удалён.', 'success')
-        return redirect(url_for('object_detail', obj_id=obj_id))
+        return redirect(url_for('object_detail', obj_id=obj_id, tab='plans'))
 
     # ═══ Этапы строительства ═══
 

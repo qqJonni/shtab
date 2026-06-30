@@ -237,6 +237,25 @@
     });
   }
 
+  function playNotifySound() {
+    try {
+      var ctx = new (window.AudioContext || window.webkitAudioContext)();
+      [0, 150].forEach(function(delay) {
+        var osc = ctx.createOscillator();
+        var gain = ctx.createGain();
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(880, ctx.currentTime + delay / 1000);
+        osc.frequency.exponentialRampToValueAtTime(660, ctx.currentTime + delay / 1000 + 0.15);
+        gain.gain.setValueAtTime(0.3, ctx.currentTime + delay / 1000);
+        gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + delay / 1000 + 0.25);
+        osc.start(ctx.currentTime + delay / 1000);
+        osc.stop(ctx.currentTime + delay / 1000 + 0.25);
+      });
+    } catch(e) {}
+  }
+
   function showToast(title) {
     var container = document.getElementById('toastContainer');
     var toast = document.createElement('div');
@@ -259,6 +278,7 @@
         updateBadges(data.count);
         if (data.count > lastCount && data.latest) {
           showToast(data.latest.title);
+          playNotifySound();
         }
         lastCount = data.count;
       })

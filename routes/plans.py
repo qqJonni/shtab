@@ -1,8 +1,8 @@
-from flask import render_template, abort, request
+from flask import render_template, abort, request, redirect, url_for, flash
 from flask_login import login_required, current_user
 
-from db import query_db
-from helpers import role_required
+from db import query_db, execute_db
+from helpers import role_required, save_plan_file
 
 VIEWERS = ('manager', 'admin', 'pto', 'inspector', 'foreman')
 
@@ -55,3 +55,48 @@ def register(app):
         return render_template('plans/view.html', plan=plan, obj=obj, pins=pins,
                                status_counts=status_counts, total_pins=total_pins,
                                status_filter=status_filter, can_create=can_create)
+
+    @app.route('/plans/upload', methods=['GET', 'POST'])
+    @login_required
+    @role_required('pto', 'admin', 'manager')
+    def plan_upload_standalone():
+        objects = query_db("SELECT id, name FROM objects WHERE status='active' ORDER BY name")
+
+        if request.method == 'POST':
+            obj_id = request.form.get('object_id', '').strip()
+            title = request.form.get('title', '').strip()
+            level_label = request.form.get('level_label', '').strip()
+            file = request.files.get('file')
+
+            if not obj_id:
+                flash('Выберите объект.', 'danger')
+                return render_template('plans/upload.html', objects=objects)
+
+            obj = query_db('SELECT id FROM objects WHERE id = ?', (obj_id,), one=True)
+            if not obj:
+                abort(404)
+
+            if not file or not file.filename:
+                flash('Выберите файл плана.', 'danger')
+                return render_template('plans/upload.html', objects=objects)
+
+            filename = save_plan_file(file, int(obj_id))
+            if not filename:
+                flash('Недопустимый формат. Допустимы: PNG, JPG, WEBP.', 'danger')
+                return render_template('plans/upload.html', objects=objects)
+
+            if not title:
+                title = file.filename
+
+            max_order = query_db('SELECT MAX(sort_order) as mx FROM object_plans WHERE object_id=?',
+                                 (obj_id,), one=True)['mx'] or 0
+
+            execute_db(
+                'INSERT INTO object_plans (object_id, title, level_label, filename, sort_order, uploaded_by) '
+                'VALUES (?, ?, ?, ?, ?, ?)',
+                (obj_id, title, level_label, filename, max_order + 1, current_user.id))
+
+            flash('План загружен.', 'success')
+            return redirect(url_for('object_detail', obj_id=obj_id))
+
+        return render_template('plans/upload.html', objects=objects)

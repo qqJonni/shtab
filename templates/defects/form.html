@@ -23,6 +23,9 @@
               <select name="stage_id" id="selStage" class="form-select" required>
                 <option value="">Сначала выберите объект</option>
               </select>
+              <div id="contractorBadge" style="display:none" class="mt-2 p-2 rounded" style="background:var(--bg-main);font-size:13px">
+                <i class="bi bi-bell me-1 text-primary"></i>Уведомление получит: <strong id="contractorName"></strong>
+              </div>
             </div>
           </div>
           <div class="mb-3">
@@ -117,7 +120,11 @@ document.getElementById('selObject').addEventListener('change', function() {
     .then(r => r.json())
     .then(data => {
       stageSelect.innerHTML = '<option value="">Выберите этап</option>';
-      data.forEach(s => { stageSelect.innerHTML += '<option value="'+s.id+'">'+s.name+'</option>'; });
+      data.forEach(s => {
+        var contractor = s.contractor_name || '';
+        var label = s.name + (contractor ? ' — ' + contractor : '');
+        stageSelect.innerHTML += '<option value="'+s.id+'" data-contractor="'+contractor+'">'+label+'</option>';
+      });
     });
   // Load plans
   fetch('/api/plans-by-object/' + this.value)
@@ -138,7 +145,23 @@ document.getElementById('selObject').addEventListener('change', function() {
 document.getElementById('selStage').addEventListener('change', function() {
   var subSelect = document.getElementById('selSubstage');
   subSelect.innerHTML = '<option value="">— не привязан —</option>';
-  if (!this.value) return;
+  var badge = document.getElementById('contractorBadge');
+  var nameEl = document.getElementById('contractorName');
+
+  if (!this.value) {
+    badge.style.display = 'none';
+    return;
+  }
+
+  // Показать подрядчика из данных опции
+  var opt = this.options[this.selectedIndex];
+  if (opt.dataset.contractor) {
+    nameEl.textContent = opt.dataset.contractor;
+    badge.style.display = '';
+  } else {
+    badge.style.display = 'none';
+  }
+
   fetch('/api/substages-by-stage/' + this.value)
     .then(r => r.json())
     .then(data => {

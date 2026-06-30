@@ -23,9 +23,11 @@ def register(app):
         if not obj:
             abort(404)
         entries = query_db(
-            'SELECT je.*, u.full_name as author_name, u.role as author_role '
+            'SELECT je.*, u.full_name as author_name, u.role as author_role, '
+            'org.name as contractor_name '
             'FROM journal_entries je '
             'LEFT JOIN users u ON je.author_id = u.id '
+            'LEFT JOIN organizations org ON je.contractor_id = org.id '
             'WHERE je.object_id = ? ORDER BY je.entry_date DESC, je.created_at DESC',
             (obj_id,))
         entries_list = [dict(e) for e in entries]
@@ -43,20 +45,20 @@ def register(app):
         if not obj:
             abort(404)
 
+        contractors = query_db("SELECT id, name FROM organizations WHERE type='contractor' ORDER BY name")
+
         if request.method == 'POST':
             text = request.form.get('text', '').strip()
             entry_date = request.form.get('entry_date', '').strip() or date.today().isoformat()
             weather = request.form.get('weather', '').strip()
-
-            if not text:
-                flash('Введите текст записи.', 'danger')
-                return render_template('journal/form.html', obj=obj, entry=None)
+            work_type = request.form.get('work_type', '').strip()
+            contractor_id = request.form.get('contractor_id', '').strip() or None
 
             db = get_db()
             cur = db.execute(
-                'INSERT INTO journal_entries (object_id, author_id, entry_date, text, weather) '
-                'VALUES (?, ?, ?, ?, ?)',
-                (obj_id, current_user.id, entry_date, text, weather))
+                'INSERT INTO journal_entries (object_id, author_id, entry_date, text, weather, work_type, contractor_id) '
+                'VALUES (?, ?, ?, ?, ?, ?, ?)',
+                (obj_id, current_user.id, entry_date, text, weather, work_type, contractor_id))
             entry_id = cur.lastrowid
             db.commit()
 
@@ -70,7 +72,7 @@ def register(app):
             flash('Запись добавлена.', 'success')
             return redirect(url_for('journal_list', obj_id=obj_id))
 
-        return render_template('journal/form.html', obj=obj, entry=None)
+        return render_template('journal/form.html', obj=obj, entry=None, contractors=contractors)
 
     @app.route('/journal/<int:entry_id>/edit', methods=['GET', 'POST'])
     @login_required
@@ -82,16 +84,16 @@ def register(app):
             abort(403)
         obj = query_db('SELECT * FROM objects WHERE id = ?', (entry['object_id'],), one=True)
 
+        contractors = query_db("SELECT id, name FROM organizations WHERE type='contractor' ORDER BY name")
+
         if request.method == 'POST':
             text = request.form.get('text', '').strip()
             entry_date = request.form.get('entry_date', '').strip() or entry['entry_date']
             weather = request.form.get('weather', '').strip()
-            if not text:
-                flash('Введите текст записи.', 'danger')
-                return render_template('journal/form.html', obj=obj, entry=entry)
-
-            execute_db('UPDATE journal_entries SET text=?, entry_date=?, weather=? WHERE id=?',
-                       (text, entry_date, weather, entry_id))
+            work_type = request.form.get('work_type', '').strip()
+            contractor_id = request.form.get('contractor_id', '').strip() or None
+            execute_db('UPDATE journal_entries SET text=?, entry_date=?, weather=?, work_type=?, contractor_id=? WHERE id=?',
+                       (text, entry_date, weather, work_type, contractor_id, entry_id))
 
             photos = request.files.getlist('photos')
             for f in photos:
@@ -104,7 +106,7 @@ def register(app):
             return redirect(url_for('journal_list', obj_id=entry['object_id']))
 
         photos = query_db('SELECT * FROM journal_photos WHERE entry_id = ? ORDER BY id', (entry_id,))
-        return render_template('journal/form.html', obj=obj, entry=entry, photos=photos)
+        return render_template('journal/form.html', obj=obj, entry=entry, photos=photos, contractors=contractors)
 
     @app.route('/journal/<int:entry_id>/delete', methods=['POST'])
     @login_required
@@ -169,9 +171,11 @@ def register(app):
             "WHERE cs.object_id=? AND mr.status NOT IN ('completed')", (obj_id,), one=True)['c']
 
         journal = query_db(
-            'SELECT je.*, u.full_name as author_name FROM journal_entries je '
+            'SELECT je.*, u.full_name as author_name, org.name as contractor_name '
+            'FROM journal_entries je '
             'LEFT JOIN users u ON je.author_id = u.id '
-            'WHERE je.object_id = ? ORDER BY je.entry_date DESC LIMIT 10', (obj_id,))
+            'LEFT JOIN organizations org ON je.contractor_id = org.id '
+            'WHERE je.object_id = ? ORDER BY je.entry_date DESC LIMIT 30', (obj_id,))
 
         pdf_buf = _build_object_pdf(obj, stages_data, progress, total_subs, total_done,
                                      defects_open, defects_closed, pkgs_review, pkgs_completed,
@@ -295,17 +299,31 @@ def _build_object_pdf(obj, stages, progress, total_subs, total_done,
 
     # ═══ ЖУРНАЛ ═══
     if journal:
-        elements.append(Paragraph('<b>Последние записи журнала</b>', sh))
+        elements.append(Paragraph('<b>Строительный журнал</b>', sh))
         elements.append(Spacer(1, 2*mm))
 
-        s_journal = ParagraphStyle('j', fontName=mf, fontSize=8, leading=10)
-        for je in journal:
-            je_date = _fmt_date(je['entry_date'])
-            author = je['author_name'] or '—'
-            weather = f" · {je['weather']}" if je['weather'] else ''
-            elements.append(Paragraph(f'<b>{je_date}</b> — {author}{weather}', s_journal))
-            elements.append(Paragraph(je['text'][:300] + ('…' if len(je['text']) > 300 else ''), s_journal))
-            elements.append(Spacer(1, 2*mm))
+        ss2 = ParagraphStyle('ss2', fontName=mf, fontSize=8, leading=10)
+        j_data = [['№', 'Дата', 'Вид работ', 'Подрядчик', 'Подпись']]
+        for i, je in enumerate(reversed(list(journal)), 1):
+            j_data.append([
+                str(i),
+                _fmt_date(je['entry_date']),
+                Paragraph(je['work_type'] or '—', ss2),
+                Paragraph(je['contractor_name'] or '—', ss2),
+                '',
+            ])
+
+        tj = Table(j_data, colWidths=[8*mm, 25*mm, 55*mm, 55*mm, 35*mm])
+        tj.setStyle(TableStyle([
+            ('FONTNAME', (0, 0), (-1, -1), mf), ('FONTSIZE', (0, 0), (-1, -1), 8),
+            ('GRID', (0, 0), (-1, -1), 0.5, thin),
+            ('BACKGROUND', (0, 0), (-1, 0), colors.Color(0.96, 0.97, 0.98)),
+            ('ALIGN', (0, 0), (-1, 0), 'CENTER'),
+            ('ALIGN', (0, 1), (0, -1), 'CENTER'),
+            ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+            ('LEFTPADDING', (0, 0), (-1, -1), 4),
+        ]))
+        elements.append(tj)
 
     # Footer
     elements.append(Spacer(1, 10*mm))
