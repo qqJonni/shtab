@@ -264,7 +264,11 @@
     {% for a in audio %}
     <div class="d-flex align-items-center gap-3 {% if not loop.last %}mb-2 pb-2{% endif %}" {% if not loop.last %}style="border-bottom:1px solid var(--border)"{% endif %}>
       <audio controls preload="metadata" style="flex:1;height:36px">
-        <source src="{{ url_for('static', filename='defects/' + d.id|string + '/' + a.filename) }}">
+        {% set ext = a.filename.rsplit('.', 1)[-1] %}
+        {% if ext == 'webm' %}<source src="{{ url_for('static', filename='defects/' + d.id|string + '/' + a.filename) }}" type="audio/webm">
+        {% elif ext == 'mp4' or ext == 'm4a' %}<source src="{{ url_for('static', filename='defects/' + d.id|string + '/' + a.filename) }}" type="audio/mp4">
+        {% elif ext == 'ogg' %}<source src="{{ url_for('static', filename='defects/' + d.id|string + '/' + a.filename) }}" type="audio/ogg">
+        {% else %}<source src="{{ url_for('static', filename='defects/' + d.id|string + '/' + a.filename) }}">{% endif %}
       </audio>
       <span class="text-muted" style="font-size:11px;white-space:nowrap">{{ a.uploader_name or '' }}</span>
       {% if a.uploaded_by == current_user.id or current_user.role in ('manager', 'admin') %}
@@ -402,18 +406,27 @@ function startRecord() {
     document.getElementById('recUnavailable').style.display = '';
     return;
   }
+  var mimeType = '';
+  var ext = 'webm';
+  var candidates = ['audio/webm;codecs=opus','audio/webm','audio/mp4','audio/ogg;codecs=opus','audio/ogg'];
+  for (var i = 0; i < candidates.length; i++) {
+    if (MediaRecorder.isTypeSupported(candidates[i])) { mimeType = candidates[i]; break; }
+  }
+  if (mimeType.indexOf('mp4') !== -1) ext = 'mp4';
+  else if (mimeType.indexOf('ogg') !== -1) ext = 'ogg';
+  else ext = 'webm';
   navigator.mediaDevices.getUserMedia({audio: true})
     .then(function(stream) {
       audioChunks = [];
-      mediaRecorder = new MediaRecorder(stream);
+      mediaRecorder = mimeType ? new MediaRecorder(stream, {mimeType: mimeType}) : new MediaRecorder(stream);
       mediaRecorder.ondataavailable = function(e) { audioChunks.push(e.data); };
       mediaRecorder.onstop = function() {
         stream.getTracks().forEach(function(t) { t.stop(); });
-        var blob = new Blob(audioChunks, {type: 'audio/webm'});
+        var blob = new Blob(audioChunks, {type: mimeType || 'audio/webm'});
         var url = URL.createObjectURL(blob);
         document.getElementById('recAudio').src = url;
         document.getElementById('recPreview').style.display = '';
-        var file = new File([blob], 'voice_' + Date.now() + '.webm', {type: 'audio/webm'});
+        var file = new File([blob], 'voice_' + Date.now() + '.' + ext, {type: mimeType || 'audio/webm'});
         var dt = new DataTransfer();
         dt.items.add(file);
         document.getElementById('recFile').files = dt.files;

@@ -9,7 +9,7 @@ import config
 
 ALLOWED_IMG = {'png', 'jpg', 'jpeg', 'gif', 'webp'}
 ALLOWED_VIDEO = {'mp4', 'mov', 'avi', 'mkv', 'webm'}
-ALLOWED_AUDIO = {'webm', 'ogg', 'mp3', 'wav', 'm4a'}
+ALLOWED_AUDIO = {'webm', 'ogg', 'mp3', 'wav', 'm4a', 'mp4'}
 ALLOWED_DOC = {'pdf', 'doc', 'docx', 'xls', 'xlsx', 'zip', 'rar'}
 
 
