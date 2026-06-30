@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+  <rect width="32" height="32" rx="6" fill="#1E293B"/>
+  <!-- bi-building path scaled to fit 6..26 range -->
+  <g transform="translate(7, 4) scale(0.5625)">
+    <path d="M4 2.5A2.5 2.5 0 0 1 6.5 0h3A2.5 2.5 0 0 1 12 2.5V5h1.5A2.5 2.5 0 0 1 16 7.5V14h1.5A1.5 1.5 0 0 1 19 15.5V16h1v15H0V16h1v-.5A1.5 1.5 0 0 1 2.5 14H4V2.5zM5 5h6V2.5a1.5 1.5 0 0 0-1.5-1.5h-3A1.5 1.5 0 0 0 5 2.5V5zm5 4H6V7H5v2H1.5a.5.5 0 0 0-.5.5V14h2v-.5a.5.5 0 0 1 .5-.5h.5V13H4v-1h1v-1H4V10h1V9H4V8h6V9h-1v1h1v1h-1v1h1v.5h.5a.5.5 0 0 1 .5.5V14h2v-6.5a1.5 1.5 0 0 0-1.5-1.5H13V5h-1V4h-1V5H10V9zM3 16v14h4V16H3zm5 0v14h6V16H8zm7 0v14h4V16h-4z" fill="#3B82F6"/>
+  </g>
+</svg>
