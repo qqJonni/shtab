@@ -139,7 +139,7 @@ def register(app):
                 f"SELECT o.name, COUNT(ss.id) as cnt FROM substages ss "
                 f"JOIN construction_stages cs ON ss.stage_id = cs.id "
                 f"JOIN objects o ON cs.object_id = o.id "
-                f"WHERE ss.plan_end_date < date('now') AND ss.status NOT IN ('done','closed','approved') "
+                f"WHERE ss.plan_end_date < to_char(now(),'YYYY-MM-DD') AND ss.status NOT IN ('done','closed','approved') "
                 f"{where_con} GROUP BY o.id ORDER BY cnt DESC")
             palette = ['#EF4444', '#F59E0B', '#3B82F6', '#8B5CF6', '#94A3B8']
             return jsonify({
@@ -155,7 +155,7 @@ def register(app):
                 f"FROM substages ss "
                 f"JOIN construction_stages cs ON ss.stage_id = cs.id "
                 f"LEFT JOIN organizations org ON cs.contractor_id = org.id "
-                f"WHERE ss.plan_end_date < date('now') AND ss.status NOT IN ('done','closed','approved') "
+                f"WHERE ss.plan_end_date < to_char(now(),'YYYY-MM-DD') AND ss.status NOT IN ('done','closed','approved') "
                 f"{where_obj} GROUP BY cs.contractor_id ORDER BY cnt DESC")
             palette = ['#EF4444', '#F59E0B', '#3B82F6', '#8B5CF6', '#94A3B8']
             return jsonify({
@@ -173,7 +173,7 @@ def register(app):
                 f"JOIN construction_stages cs ON ss.stage_id = cs.id "
                 f"JOIN objects o ON cs.object_id = o.id "
                 f"LEFT JOIN organizations org ON cs.contractor_id = org.id "
-                f"WHERE ss.plan_end_date < date('now') AND ss.status NOT IN ('done','closed','approved') "
+                f"WHERE ss.plan_end_date < to_char(now(),'YYYY-MM-DD') AND ss.status NOT IN ('done','closed','approved') "
                 f"{filters} ORDER BY ss.plan_end_date")
             status_map = {'not_started': 'Не начат', 'in_progress': 'В работе'}
             return jsonify({
