@@ -371,11 +371,13 @@
 {% endif %}
 
 {% block scripts %}{% endblock %}
+{% if current_user.is_authenticated %}
 <script>
-if ('serviceWorker' in navigator) {
+if ('serviceWorker' in navigator && location.protocol === 'https:') {
   navigator.serviceWorker.register('/sw.js', {scope: '/'})
     .catch(function(e) { console.warn('SW registration failed:', e); });
 }
 </script>
+{% endif %}
 </body>
 </html>
