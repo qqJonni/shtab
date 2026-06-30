@@ -34,7 +34,6 @@
             <th style="width:110px">Дата</th>
             <th>Вид работ</th>
             <th style="width:180px">Подрядчик</th>
-            <th style="width:130px">Погода</th>
             <th style="width:100px">Автор</th>
             <th style="width:72px"></th>
           </tr>
@@ -54,9 +53,6 @@
               {% endif %}
             </td>
             <td style="font-size:13px">{{ e.contractor_name or '—' }}</td>
-            <td style="font-size:13px">
-              {% if e.weather %}<i class="bi bi-cloud-sun me-1 text-muted"></i>{{ e.weather }}{% else %}—{% endif %}
-            </td>
             <td>
               <span style="font-size:12px;color:var(--text-secondary)">{{ e.author_name or '—' }}</span>
             </td>
