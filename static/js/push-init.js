@@ -30,6 +30,9 @@
       document.removeEventListener('click', show);
       document.removeEventListener('touchend', show);
 
+      // Помечаем сразу — чтобы не показывать снова при следующем клике/загрузке
+      localStorage.setItem(STORAGE_KEY, '1');
+
       var bannerId = 'push-permission-banner';
       if (document.getElementById(bannerId)) return;
 
