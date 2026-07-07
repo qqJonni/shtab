@@ -95,7 +95,7 @@ def create_app():
 
 
 def register_routes(app):
-    from routes import auth, notifications, dashboards, objects, defects, packages, supply, export, guest, admin, report_page, plans, journal, pwa
+    from routes import auth, notifications, dashboards, objects, defects, packages, supply, export, guest, admin, report_page, plans, journal, pwa, smeta
     auth.register(app)
     notifications.register(app)
     dashboards.register(app)
@@ -110,6 +110,7 @@ def register_routes(app):
     plans.register(app)
     journal.register(app)
     pwa.register(app)
+    smeta.register(app)
 
 
 def init_db():
@@ -448,6 +449,20 @@ def init_db():
             auth TEXT NOT NULL,
             created_at TEXT DEFAULT to_char(now(),'YYYY-MM-DD HH24:MI:SS'),
             UNIQUE(user_id, endpoint)
+        )
+    ''')
+
+    cur.execute('''
+        CREATE TABLE IF NOT EXISTS smeta_imports (
+            id           SERIAL PRIMARY KEY,
+            stage_id     INTEGER NOT NULL REFERENCES construction_stages(id) ON DELETE CASCADE,
+            filename     TEXT,
+            source_type  TEXT CHECK(source_type IN ('xlsx','csv','pdf')),
+            status       TEXT DEFAULT 'parsed' CHECK(status IN ('parsed','confirmed','failed')),
+            rows_json    TEXT,
+            uploaded_by  INTEGER REFERENCES users(id),
+            created_at   TEXT DEFAULT to_char(now(),'YYYY-MM-DD HH24:MI:SS'),
+            confirmed_at TEXT
         )
     ''')
 
