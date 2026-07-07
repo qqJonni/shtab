@@ -160,20 +160,6 @@
               {% if s.description %}
                 <div class="text-muted" style="font-size:12px">{{ s.description[:80] }}{% if s.description|length > 80 %}…{% endif %}</div>
               {% endif %}
-              {% if s.id_req_total > 0 %}
-                {% set id_pct = (s.id_req_done / s.id_req_total * 100) | round | int %}
-                <div class="mt-1 d-flex align-items-center gap-1" style="font-size:11px">
-                  <i class="bi bi-folder2-open" style="color:{% if id_pct == 100 %}var(--success){% else %}var(--warning){% endif %}"></i>
-                  <span style="color:{% if id_pct == 100 %}var(--success){% else %}var(--warning){% endif %}">
-                    ИД {{ id_pct }}%
-                  </span>
-                  {% if s.id_missing %}
-                    <span class="text-muted" title="Не хватает: {{ s.id_missing | join(', ') }}">
-                      — не хватает: {{ s.id_missing[:2] | join(', ') }}{% if s.id_missing | length > 2 %} и ещё {{ s.id_missing | length - 2 }}{% endif %}
-                    </span>
-                  {% endif %}
-                </div>
-              {% endif %}
             </td>
             <td>
               {% if s.contractor_name %}
