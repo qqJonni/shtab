@@ -12,6 +12,7 @@ static/plans/
 static/journal/
 static/smeta/*
 !static/smeta/.gitkeep
+static/id_docs/
 backups/
 *.egg-info/
 dist/

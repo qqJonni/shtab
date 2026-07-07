@@ -467,11 +467,73 @@ def init_db():
         )
     ''')
 
+    cur.execute('''
+        CREATE TABLE IF NOT EXISTS id_item_types (
+            id        SERIAL PRIMARY KEY,
+            name      TEXT NOT NULL UNIQUE,
+            order_num INTEGER NOT NULL DEFAULT 0
+        )
+    ''')
+
+    cur.execute('''
+        CREATE TABLE IF NOT EXISTS id_checklist_items (
+            id         SERIAL PRIMARY KEY,
+            stage_id   INTEGER NOT NULL REFERENCES construction_stages(id) ON DELETE CASCADE,
+            type_id    INTEGER REFERENCES id_item_types(id),
+            title      TEXT NOT NULL,
+            is_required INTEGER NOT NULL DEFAULT 1,
+            order_num  INTEGER NOT NULL DEFAULT 0,
+            created_by INTEGER REFERENCES users(id),
+            created_at TEXT DEFAULT to_char(now(),'YYYY-MM-DD HH24:MI:SS')
+        )
+    ''')
+
+    cur.execute('''
+        CREATE TABLE IF NOT EXISTS id_documents (
+            id          SERIAL PRIMARY KEY,
+            item_id     INTEGER NOT NULL REFERENCES id_checklist_items(id) ON DELETE CASCADE,
+            filename    TEXT NOT NULL,
+            original_name TEXT,
+            uploaded_by INTEGER REFERENCES users(id),
+            uploaded_at TEXT DEFAULT to_char(now(),'YYYY-MM-DD HH24:MI:SS')
+        )
+    ''')
+
+    cur.execute('''
+        CREATE TABLE IF NOT EXISTS id_packages (
+            id            SERIAL PRIMARY KEY,
+            stage_id      INTEGER NOT NULL REFERENCES construction_stages(id) ON DELETE CASCADE,
+            contractor_id INTEGER REFERENCES organizations(id),
+            created_by    INTEGER NOT NULL REFERENCES users(id),
+            status        TEXT NOT NULL DEFAULT 'draft'
+                          CHECK(status IN ('draft','in_review','returned','accepted')),
+            return_to_role TEXT,
+            created_at    TEXT DEFAULT to_char(now(),'YYYY-MM-DD HH24:MI:SS'),
+            submitted_at  TEXT,
+            accepted_at   TEXT
+        )
+    ''')
+
+    cur.execute('''
+        CREATE TABLE IF NOT EXISTS id_approval_steps (
+            id          SERIAL PRIMARY KEY,
+            package_id  INTEGER NOT NULL REFERENCES id_packages(id) ON DELETE CASCADE,
+            step_order  INTEGER NOT NULL,
+            role        TEXT NOT NULL CHECK(role IN ('inspector','pto','manager')),
+            status      TEXT NOT NULL DEFAULT 'waiting'
+                        CHECK(status IN ('waiting','pending','approved','returned')),
+            approver_id INTEGER REFERENCES users(id),
+            comment     TEXT,
+            acted_at    TEXT
+        )
+    ''')
+
     conn.commit()
     cur.close()
 
     run_migrations(conn)
     _seed(conn)
+    _seed_id_item_types(conn)
     conn.close()
 
 
@@ -547,6 +609,39 @@ def _seed(conn):
     cur.close()
 
 
+def _seed_id_item_types(conn):
+    """Идемпотентный сид справочника типов ИД."""
+    types = [
+        'Реестр исполнительной документации',
+        'Акт освидетельствования скрытых работ (АОСР)',
+        'Акт освидетельствования ответственных конструкций',
+        'Акт освидетельствования участков сетей инженерно-технического обеспечения',
+        'Исполнительная геодезическая схема',
+        'Исполнительный чертёж',
+        'Акт приёмки геодезической разбивочной основы',
+        'Протокол лабораторных испытаний',
+        'Паспорт качества на материалы/изделия',
+        'Сертификат соответствия на материалы',
+        'Общий журнал работ',
+        'Специальный журнал работ',
+        'Журнал входного контроля материалов',
+        'Схема операционного контроля качества',
+        'Акт испытания (трубопроводов/систем/конструкций)',
+        'Ведомость смонтированного оборудования',
+        'Документы о качестве (накладные)',
+        'Прочее',
+    ]
+    cur = conn.cursor()
+    for i, name in enumerate(types, 1):
+        cur.execute(
+            'INSERT INTO id_item_types (name, order_num) VALUES (%s, %s) '
+            'ON CONFLICT (name) DO NOTHING',
+            (name, i),
+        )
+    conn.commit()
+    cur.close()
+
+
 def run_migrations(conn):
     """Идемпотентные миграции через information_schema (не PRAGMA)."""
     cur = conn.cursor()
@@ -600,7 +695,7 @@ def run_migrations(conn):
     cur.close()
 
 
-for folder in (config.UPLOAD_FOLDER, config.DOCS_FOLDER, config.AVATARS_FOLDER, config.DEFECTS_FOLDER, config.PACKAGES_FOLDER, config.PLANS_FOLDER, config.JOURNAL_FOLDER):
+for folder in (config.UPLOAD_FOLDER, config.DOCS_FOLDER, config.AVATARS_FOLDER, config.DEFECTS_FOLDER, config.PACKAGES_FOLDER, config.PLANS_FOLDER, config.JOURNAL_FOLDER, config.ID_DOCS_FOLDER):
     os.makedirs(folder, exist_ok=True)
 
 app = create_app()
