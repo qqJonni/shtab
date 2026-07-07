@@ -10,6 +10,8 @@ static/defects/
 static/packages/
 static/plans/
 static/journal/
+static/smeta/*
+!static/smeta/.gitkeep
 backups/
 *.egg-info/
 dist/

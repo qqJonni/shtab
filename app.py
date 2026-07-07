@@ -451,6 +451,20 @@ def init_db():
         )
     ''')
 
+    cur.execute('''
+        CREATE TABLE IF NOT EXISTS smeta_imports (
+            id           SERIAL PRIMARY KEY,
+            stage_id     INTEGER NOT NULL REFERENCES construction_stages(id) ON DELETE CASCADE,
+            filename     TEXT,
+            source_type  TEXT CHECK(source_type IN ('xlsx','csv','pdf')),
+            status       TEXT DEFAULT 'parsed' CHECK(status IN ('parsed','confirmed','failed')),
+            rows_json    TEXT,
+            uploaded_by  INTEGER REFERENCES users(id),
+            created_at   TEXT DEFAULT to_char(now(),'YYYY-MM-DD HH24:MI:SS'),
+            confirmed_at TEXT
+        )
+    ''')
+
     conn.commit()
     cur.close()
 
