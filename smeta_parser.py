@@ -39,8 +39,9 @@ _HEADER_SYNONYMS: dict[str, list[str]] = {
         'количество (объем)', 'количество/объем', 'количество (объём)',
         'объём работ', 'объем работ', 'количество', 'объём', 'объем',
         'кол-во', 'кол.', 'кол', 'qty',
-        # «Всего» в сметах — суммарное кол-во по секциям/этажам, не сумма денег
-        'всего',
+        # «Всего» / «Общий объём» в сметах — суммарное кол-во, не сумма денег
+        'всего', 'общий объем', 'общий объём', 'итого объем', 'итого объём',
+        'общее количество', 'объем по всем', 'объём по всем',
     ],
     'unit_price': [
         'стоимость за единицу', 'стоимость за ед.', 'стоимость за ед',
@@ -63,7 +64,8 @@ _UNIT_MAP: dict[str, str] = {
     # м.пог.
     'м.пог.': 'м.пог.', 'м.пог': 'м.пог.', 'пог.м.': 'м.пог.', 'пог.м': 'м.пог.',
     'п.м.': 'м.пог.', 'п.м': 'м.пог.', 'пм': 'м.пог.',
-    'м.п.': 'м.пог.', 'м.п': 'м.пог.',  # сокращение в ряде смет
+    'м.п.': 'м.пог.', 'м.п': 'м.пог.',    # сокращение в ряде смет
+    'м. пог.': 'м.пог.', 'м. пог': 'м.пог.',  # с пробелом после «м»
     # шт.
     'шт.': 'шт.', 'шт': 'шт.', 'штук': 'шт.', 'штуки': 'шт.', 'штука': 'шт.',
     # м3
@@ -126,19 +128,24 @@ def _normalize_unit(raw) -> tuple[str, bool]:
     return stripped, False
 
 
-def _match_header(cell) -> Optional[str]:
-    """Возвращает имя поля ('name'/'unit'/...) если заголовок распознан, иначе None."""
+def _match_header(cell) -> Optional[tuple[str, int]]:
+    """
+    Возвращает (field, score) или None.
+    score = длина совпавшего синонима — длиннее = точнее.
+    """
     if cell is None:
         return None
     t = str(cell).strip().lower()
-    # Убрать «, руб.» / «, руб» и т.п. из хвоста
+    t = re.sub(r'\s*\n\s*', ' ', t)          # многострочные заголовки → одна строка
     t = re.sub(r'[,\s]+руб[\.ьёя]?.*$', '', t).strip()
     t = re.sub(r'\s+', ' ', t)
+    best: Optional[tuple[str, int]] = None
     for field, synonyms in _HEADER_SYNONYMS.items():
         for syn in synonyms:
             if t == syn or t.startswith(syn + ' ') or t.startswith(syn + ','):
-                return field
-    return None
+                if best is None or len(syn) > best[1]:
+                    best = (field, len(syn))
+    return best
 
 
 def _is_junk(name: str, nums: list) -> bool:
@@ -194,13 +201,18 @@ def _parse_rows(raw_rows: list[list]) -> list[dict]:
     col_map: dict[str, int] = {}
     header_idx = -1
 
-    # Ищем строку-заголовок
+    # Ищем строку-заголовок.
+    # Среди нескольких совпадений для одного поля побеждает наиболее длинный синоним
+    # (например «общий объем» бьёт «объем» для колонки 'quantity').
     for i, row in enumerate(raw_rows[:30]):
-        mapping: dict[str, int] = {}
+        scores: dict[str, tuple[int, int]] = {}  # field -> (score, col_idx)
         for j, cell in enumerate(row):
-            field = _match_header(cell)
-            if field and field not in mapping:
-                mapping[field] = j
+            result_h = _match_header(cell)
+            if result_h:
+                field, score = result_h
+                if field not in scores or score > scores[field][0]:
+                    scores[field] = (score, j)
+        mapping = {f: idx for f, (_, idx) in scores.items()}
         if 'name' in mapping and len(mapping) >= 2:
             col_map = mapping
             header_idx = i
