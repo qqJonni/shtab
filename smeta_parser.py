@@ -323,25 +323,38 @@ def parse_pdf(filepath: str) -> tuple[list[dict], str]:
     """
     Парсит PDF-смету.
     Возвращает (rows, note):
-      note = '' — ОК, 'needs_ocr' — скан без текстового слоя,
-             'ai_used' — детерминированный не сработал, пошёл ИИ.
+      ''        — ОК, детерминированный
+      'ai_used' — ИИ-фолбэк (текстовый PDF, но колонки не разметились)
+      'ocr_ai'  — скан → OCR → ИИ
+      'needs_ocr' — скан, OCR недоступен (нет ключей)
     """
+    import ai_extractor
+
     text, status = _extract_pdf_text(filepath)
+
+    # Скан: пробуем Yandex Vision OCR
     if status == 'needs_ocr':
-        return [], 'needs_ocr'
+        try:
+            text = ai_extractor.ocr_pdf(filepath)
+        except Exception:
+            text = ''
+        if not text:
+            return [], 'needs_ocr'
+        # OCR дал текст → сразу в ИИ (структура таблицы после OCR непредсказуема)
+        ai_rows = ai_extractor.ai_extract(text)
+        return ai_rows, 'ocr_ai'
+
     if not text:
         return [], 'error'
 
-    # Пробуем детерминированный парсер по строкам текста
+    # Текстовый PDF: пробуем детерминированный парсер
     text_rows = [line.split('\t') if '\t' in line else [line]
                  for line in text.splitlines() if line.strip()]
     det_rows = _parse_rows(text_rows)
-
     if det_rows:
         return det_rows, ''
 
     # Детерминированный не справился → ИИ-фолбэк
-    import ai_extractor
     ai_rows = ai_extractor.ai_extract(text)
     return ai_rows, 'ai_used'
 

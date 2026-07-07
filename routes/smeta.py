@@ -168,7 +168,13 @@ def register(app):
             )
             return redirect(url_for('stage_detail', stage_id=stage_id))
 
-        if parse_note == 'ai_used':
+        if parse_note == 'ocr_ai':
+            flash(
+                'Файл распознан через Yandex Vision OCR + ИИ. '
+                'Внимательно проверьте все позиции перед созданием подэтапов.',
+                'info',
+            )
+        elif parse_note == 'ai_used':
             flash(
                 'Детерминированный парсер не смог разметить столбцы — '
                 'позиции восстановлены ИИ-фолбэком. Проверьте данные внимательно.',

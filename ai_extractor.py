@@ -1,14 +1,18 @@
 """
-ИИ-фолбэк для смет.
+ИИ-фолбэк для смет + OCR скан-PDF.
 
-Интерфейс: ai_extract(table_text) -> list[dict]
-Конфиг AI_PROVIDER (env): stub | yandexgpt | gigachat
-По умолчанию: stub — поток работает без живой модели.
+Интерфейсы:
+  ai_extract(table_text) -> list[dict]   — извлечение позиций из текста
+  ocr_pdf(filepath) -> str               — OCR скан-PDF через Yandex Vision
 
-YandexGPT: данные уходят в Yandex Cloud (РФ), ключи YANDEX_GPT_API_KEY +
-YANDEX_FOLDER_ID. Зарубежные API не задействованы.
+Конфиг (env):
+  AI_PROVIDER: stub | yandexgpt | gigachat   (default: stub)
+  YANDEX_GPT_API_KEY, YANDEX_FOLDER_ID       — для yandexgpt и OCR
+
+Данные уходят в Yandex Cloud (ЦОД в РФ). Зарубежные API не задействованы.
 """
 
+import base64
 import json
 import os
 import re
@@ -205,3 +209,72 @@ def _confidence_ai(qty, price, total) -> float:
         if abs(qty * price - total) / total < 0.02:
             score = min(score + 0.10, 1.0)
     return round(score, 2)
+
+
+# ── Yandex Vision OCR ──────────────────────────────────────────────────────
+
+def ocr_pdf(filepath: str) -> str:
+    """
+    Распознаёт текст скан-PDF через Yandex Vision OCR.
+    Возвращает распознанный текст или '' при ошибке/отсутствии ключей.
+    Данные уходят в Yandex Cloud (ЦОД в РФ).
+    Env: YANDEX_GPT_API_KEY, YANDEX_FOLDER_ID
+    """
+    import urllib.request
+    import urllib.error
+
+    api_key = os.environ.get('YANDEX_GPT_API_KEY', '')
+    folder_id = os.environ.get('YANDEX_FOLDER_ID', '')
+    if not api_key or not folder_id:
+        return ''
+
+    with open(filepath, 'rb') as f:
+        content_b64 = base64.b64encode(f.read()).decode('ascii')
+
+    payload = {
+        'mimeType': 'application/pdf',
+        'languageCodes': ['ru', 'en'],
+        'content': content_b64,
+    }
+    data = json.dumps(payload, ensure_ascii=False).encode('utf-8')
+    req = urllib.request.Request(
+        'https://ocr.api.cloud.yandex.net/ocr/v1/recognizeText',
+        data=data,
+        headers={
+            'Content-Type': 'application/json',
+            'Authorization': f'Api-Key {api_key}',
+            'x-folder-id': folder_id,
+            'x-data-logging-enabled': 'false',
+        },
+        method='POST',
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=60) as resp:
+            body = json.loads(resp.read().decode('utf-8'))
+    except urllib.error.HTTPError as e:
+        raise RuntimeError(f'Yandex Vision OCR HTTP {e.code}: {e.read().decode()}')
+
+    return _extract_ocr_text(body)
+
+
+def _extract_ocr_text(body: dict) -> str:
+    """Собирает строки из ответа Yandex Vision OCR в плоский текст."""
+    lines = []
+
+    # Новый формат: result.textAnnotation.blocks[].lines[].text
+    annotation = (body.get('result') or {}).get('textAnnotation') or {}
+    # Прямой список строк (если есть)
+    for line in annotation.get('lines') or []:
+        t = line.get('text', '').strip()
+        if t:
+            lines.append(t)
+
+    if not lines:
+        # Альтернатив: обходим блоки вручную
+        for block in annotation.get('blocks') or []:
+            for line in block.get('lines') or []:
+                t = line.get('text', '').strip()
+                if t:
+                    lines.append(t)
+
+    return '\n'.join(lines)
