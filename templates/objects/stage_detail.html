@@ -280,6 +280,13 @@
   </h5>
 </div>
 
+{% if id_missing %}
+<div class="alert mb-3 py-2 px-3" style="background:#FEF3C7;border:1px solid #F59E0B;border-radius:8px;font-size:13px">
+  <span class="fw-medium" style="color:#92400E">Не хватает файлов:</span>
+  <span style="color:#78350F"> {{ id_missing | join(', ') }}</span>
+</div>
+{% endif %}
+
 {% if can_edit_id %}
 <div class="card mb-3">
   <div class="card-body p-3">

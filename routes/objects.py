@@ -232,6 +232,15 @@ def register(app):
             s['sub_done'] = sum(1 for sub in subs if sub['status'] in ('done', 'closed', 'approved'))
             total_subs += s['sub_total']
             total_done += s['sub_done']
+            # ИД-готовность для карточки этапа
+            id_items = query_db(
+                'SELECT ci.id, ci.title, ci.is_required, '
+                '(SELECT COUNT(*) FROM id_documents WHERE item_id = ci.id) as file_count '
+                'FROM id_checklist_items ci WHERE ci.stage_id = ?', (s['id'],))
+            s['id_total'] = len(id_items)
+            s['id_req_total'] = sum(1 for i in id_items if i['is_required'])
+            s['id_req_done'] = sum(1 for i in id_items if i['is_required'] and i['file_count'] > 0)
+            s['id_missing'] = [i['title'] for i in id_items if i['is_required'] and i['file_count'] == 0]
         progress = round(total_done / total_subs * 100) if total_subs > 0 else 0
 
         defects_open = query_db(
@@ -617,6 +626,7 @@ def register(app):
                 (item['id'],))
         id_required_total = sum(1 for i in id_items if i['is_required'])
         id_required_done = sum(1 for i in id_items if i['is_required'] and i['file_count'] > 0)
+        id_missing = [i['title'] for i in id_items if i['is_required'] and i['file_count'] == 0]
 
         return render_template('objects/stage_detail.html',
                                stage=stage, docs=docs, doc_type_labels=DOC_TYPE_LABELS,
@@ -626,6 +636,7 @@ def register(app):
                                id_files_by_item=id_files_by_item,
                                id_required_total=id_required_total,
                                id_required_done=id_required_done,
+                               id_missing=id_missing,
                                can_edit_id=current_user.role in ('manager','pto','inspector','admin'),
                                can_upload_id=current_user.role in ('manager','pto','admin') or (
                                    current_user.role in ('contractor','foreman') and
