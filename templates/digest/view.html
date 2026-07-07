@@ -65,9 +65,9 @@
     </form>
     {# PDF #}
     {% if current_user.role in ('manager', 'pto', 'admin') %}
-    <a href="{{ url_for('object_report_pdf', obj_id=obj.id) }}"
+    <a href="{{ url_for('object_digest_pdf', obj_id=obj.id, period=period, days=period_days) }}"
        class="btn btn-sm btn-outline-primary">
-      <i class="bi bi-file-earmark-pdf me-1"></i>PDF
+      <i class="bi bi-file-earmark-pdf me-1"></i>Скачать PDF
     </a>
     {% endif %}
   </div>
