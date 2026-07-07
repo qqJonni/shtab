@@ -29,7 +29,7 @@ _KNOWN_UNITS: set[str] = set(config.UNITS)
 _SCHEMA_EXAMPLE = """{
   "positions": [
     {
-      "name": "Устройство стяжки",
+      "name": "Устройство стяжки пола",
       "unit": "м2",
       "quantity": 45.5,
       "unit_price": 350.00,
@@ -38,18 +38,60 @@ _SCHEMA_EXAMPLE = """{
   ]
 }"""
 
-_SYSTEM_PROMPT = (
-    "Ты — парсер строительных смет. Извлеки позиции работ из текста. "
-    "Верни ТОЛЬКО валидный JSON по заданной схеме. "
-    "Не домысливай: если поле неизвестно — оставь null или пустую строку. "
-    "Пропускай строки-разделы, заголовки групп, итоговые строки без конкретной работы. "
-    "Единицы измерения бери как есть из текста."
-)
+_SYSTEM_PROMPT = """\
+Ты — точный парсер строительных ценовых документов (ЦД / смет). \
+Извлеки ТОЛЬКО позиции работ и верни JSON.
 
-_USER_PROMPT_TPL = (
-    "Текст сметы:\n---\n{table_text}\n---\n\n"
-    "Верни JSON строго по схеме (без пояснений, только JSON):\n{schema}"
-)
+═══ СТРУКТУРА ДОКУМЕНТА ═══
+Ценовой документ состоит из разделов. Каждый раздел содержит:
+  • одну или несколько СТРОК РАБОТЫ (главная позиция раздела)
+  • под ней — строки МАТЕРИАЛОВ (расшифровка комплектующих)
+
+Колонки таблицы: Наименование | Ед.изм | Объём (кол-во) | Цена за ед. | Общая стоимость
+
+ВАЖНО: «Общая стоимость» позиции = стоимость работы + стоимость материалов.
+Поэтому Объём × Цена ≠ Общая стоимость — это нормально, НЕ используй это
+как критерий правильности.
+
+═══ ЧТО ВКЛЮЧАТЬ ═══
+Строки работ — глаголы действия:
+  устройство, прокладка, монтаж, изоляция, укладка, установка, демонтаж,
+  разработка, уплотнение, гидроизоляция, армирование, заделка, бурение и т.п.
+
+═══ ЧТО ПРОПУСКАТЬ (без исключений) ═══
+  • Материалы: любые товарные наименования — трубы, кольца, фитинги, битум,
+    песок, щебень, арматура, кабель, плиты, крепёж, марки/артикулы (KC10.6,
+    d110мм, ПП 300, ЛайтРок и т.п.)
+  • Разделы: «Раздел N», «Глава», «Итого», «Всего», «На сумму», «Итоговая
+    стоимость», «Без НДС»
+  • Спецтехника отдельной строкой (Кран 25т и т.п.) — пропускать
+  • Реквизиты, подписи, даты, юридические тексты
+
+═══ КАК ЧИТАТЬ ЧИСЛА ПОСЛЕ OCR ═══
+После OCR числа из разных колонок перемешаны. Для каждой строки работы ищи:
+  1. quantity  — небольшое число (обычно 1–1000), количество единиц
+  2. unit_price — цена ТОЛЬКО труда за единицу (без материалов)
+  3. total     — наибольшее число, итоговая стоимость раздела (труд + материалы)
+Если уверенности нет — оставь поле null, не угадывай.
+
+═══ ФОРМАТ ОТВЕТА ═══
+Только валидный JSON, никакого текста вокруг, никаких markdown-блоков.\
+"""
+
+_USER_PROMPT_TPL = """\
+Текст ценового документа извлечён из скан-PDF через OCR.
+Колонки разделены табуляцией (\\t). Порядок колонок таблицы:
+Наименование | Ед.изм | Объём | Цена за ед. | Общая стоимость
+
+Если табуляций нет — колонки перемешаны, восстанови по смыслу.
+
+---
+{table_text}
+---
+
+Верни JSON строго по схеме:
+{schema}\
+"""
 
 
 # ── Публичный интерфейс ────────────────────────────────────────────────────
@@ -213,20 +255,15 @@ def _confidence_ai(qty, price, total) -> float:
 
 # ── Yandex Vision OCR ──────────────────────────────────────────────────────
 
-def ocr_pdf(filepath: str) -> str:
-    """
-    Распознаёт текст скан-PDF через Yandex Vision OCR.
-    Возвращает распознанный текст или '' при ошибке/отсутствии ключей.
-    Данные уходят в Yandex Cloud (ЦОД в РФ).
-    Env: YANDEX_GPT_API_KEY, YANDEX_FOLDER_ID
-    """
+def ocr_pdf_raw(filepath: str) -> dict:
+    """Возвращает сырой JSON-ответ Yandex Vision OCR."""
     import urllib.request
     import urllib.error
 
     api_key = os.environ.get('YANDEX_GPT_API_KEY', '')
     folder_id = os.environ.get('YANDEX_FOLDER_ID', '')
     if not api_key or not folder_id:
-        return ''
+        return {}
 
     with open(filepath, 'rb') as f:
         content_b64 = base64.b64encode(f.read()).decode('ascii')
@@ -250,31 +287,145 @@ def ocr_pdf(filepath: str) -> str:
     )
     try:
         with urllib.request.urlopen(req, timeout=60) as resp:
-            body = json.loads(resp.read().decode('utf-8'))
+            return json.loads(resp.read().decode('utf-8'))
     except urllib.error.HTTPError as e:
         raise RuntimeError(f'Yandex Vision OCR HTTP {e.code}: {e.read().decode()}')
 
-    return _extract_ocr_text(body)
+
+def ocr_pdf(filepath: str) -> str:
+    """
+    Распознаёт скан-PDF через Yandex Vision OCR.
+    Возвращает TSV-текст с реконструированными колонками таблицы,
+    или плоский текст если координаты недоступны.
+    """
+    import urllib.request
+    import urllib.error
+
+    body = ocr_pdf_raw(filepath)
+    if not body:
+        return ''
+    return _extract_ocr_text_filtered(body)
+
+
+def _get_line_y(line: dict) -> int:
+    """Возвращает Y-координату центра строки из boundingBox."""
+    try:
+        verts = line['boundingBox']['vertices']
+        ys = [int(v.get('y', 0)) for v in verts]
+        return (min(ys) + max(ys)) // 2
+    except (KeyError, TypeError, ValueError):
+        return 0
+
+
+def _get_line_x(line: dict) -> int:
+    """Возвращает X-координату левого края строки."""
+    try:
+        verts = line['boundingBox']['vertices']
+        xs = [int(v.get('x', 0)) for v in verts]
+        return min(xs)
+    except (KeyError, TypeError, ValueError):
+        return 0
+
+
+def _reconstruct_table(body: dict) -> str:
+    """
+    Реконструирует порядок чтения из блоков OCR с координатами.
+    Группирует блоки по Y (строки), сортирует по X внутри строки.
+    Отрезает нижнюю треть страницы (реквизиты, подписи).
+    Возвращает текст в правильном порядке чтения или '' если координат нет.
+    """
+    annotation = (body.get('result') or {}).get('textAnnotation') or {}
+    page_h = int(annotation.get('height') or 0)
+
+    # Граница зоны таблицы — верхние 72% страницы
+    table_zone_max_y = int(page_h * 0.72) if page_h else 999999
+
+    # Собираем все СТРОКИ из blocks с их центром Y
+    ocr_lines: list[dict] = []  # {text, x, y}
+    for block in annotation.get('blocks') or []:
+        for line in block.get('lines') or []:
+            text = line.get('text', '').strip()
+            if not text:
+                continue
+            try:
+                verts = line['boundingBox']['vertices']
+                xs = [int(v.get('x', 0)) for v in verts]
+                ys = [int(v.get('y', 0)) for v in verts]
+                cy = (min(ys) + max(ys)) // 2
+                cx = min(xs)
+            except (KeyError, TypeError):
+                continue
+            if cy > table_zone_max_y:
+                continue  # реквизиты и подписи
+            ocr_lines.append({'text': text, 'x': cx, 'y': cy})
+
+    if not ocr_lines:
+        return ''
+
+    # Группируем строки с близким Y (допуск 18px) в горизонтальные полосы
+    ocr_lines.sort(key=lambda l: l['y'])
+    bands: list[list[dict]] = []
+    current: list[dict] = [ocr_lines[0]]
+    for ln in ocr_lines[1:]:
+        if abs(ln['y'] - current[0]['y']) <= 18:
+            current.append(ln)
+        else:
+            bands.append(current)
+            current = [ln]
+    bands.append(current)
+
+    # Внутри каждой полосы — сортируем по X (левая → правая)
+    result_lines = []
+    for band in bands:
+        band.sort(key=lambda l: l['x'])
+        merged = '  '.join(l['text'] for l in band)
+        if merged.strip():
+            result_lines.append(merged)
+
+    return '\n'.join(result_lines)
 
 
 def _extract_ocr_text(body: dict) -> str:
-    """Собирает строки из ответа Yandex Vision OCR в плоский текст."""
+    """Плоский текст из OCR-ответа."""
     lines = []
-
-    # Новый формат: result.textAnnotation.blocks[].lines[].text
     annotation = (body.get('result') or {}).get('textAnnotation') or {}
-    # Прямой список строк (если есть)
     for line in annotation.get('lines') or []:
         t = line.get('text', '').strip()
         if t:
             lines.append(t)
-
     if not lines:
-        # Альтернатив: обходим блоки вручную
         for block in annotation.get('blocks') or []:
             for line in block.get('lines') or []:
                 t = line.get('text', '').strip()
                 if t:
                     lines.append(t)
-
     return '\n'.join(lines)
+
+
+# Паттерны реквизитов — строки которые не относятся к таблице работ
+_REKVIZITY_RE = re.compile(
+    r'(инн|огрн|р/сч|к/с|бик|тел\.|e-mail|юридический адрес|пермский край|'
+    r'индивидуальный предприниматель|управляющая организация|генподрядчик|подрядчик|'
+    r'в\.в\.|м\.и\.|м\.п\.|филиал|банк|доверенности|российская федерация)',
+    re.IGNORECASE,
+)
+
+
+def _extract_ocr_text_filtered(body: dict) -> str:
+    """
+    Плоский текст из OCR с фильтрацией реквизитов и нерелевантных блоков.
+    Обрезает всё после маркера конца таблицы (итоговая стоимость, подписи).
+    """
+    raw = _extract_ocr_text(body)
+    lines = raw.splitlines()
+    result = []
+    for line in lines:
+        stripped = line.strip()
+        # Стоп: дошли до блока реквизитов или подписей
+        if re.search(r'(подрядчик|генподрядчик|инн\s+\d|огрнип|р/сч)', stripped, re.IGNORECASE):
+            break
+        # Пропускаем строки реквизитов
+        if _REKVIZITY_RE.search(stripped):
+            continue
+        result.append(line)
+    return '\n'.join(result)
