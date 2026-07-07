@@ -48,5 +48,62 @@ static/           — css/crm.css; папки загрузок (фото, док
 8. Каждое значимое действие в воркфлоу пишет уведомление получателю и (для замечаний/согласований) запись в историю.
 9. Формы КС-2/КС-3/счёт-фактура/отчёт по давальческому — по бланкам клиента (приложит Лео); до того — загрузка файлами.
 
+## Модуль «Импорт сметы» — влит в main (ветка smeta-import)
+
+### Что сделано (Шаги 1–5)
+Загрузка xlsx/csv/pdf прямо со страницы этапа → парсинг → редактируемый предпросмотр → создание подэтапов одним кликом.
+
+### Новые файлы
+```
+smeta_parser.py       — детерминированный парсер xlsx/csv; parse_pdf() → (rows, note)
+ai_extractor.py       — ИИ-фолбэк: ai_extract(text) → rows; OCR: ocr_pdf(filepath)
+routes/smeta.py       — 4 маршрута (upload, preview, confirm, cancel)
+templates/smeta/preview.html  — экран предпросмотра с редактированием позиций
+static/smeta/         — временные файлы загрузок (вне git)
+```
+
+### Маршруты
+| URL | Метод | Endpoint |
+|-----|-------|----------|
+| `/stages/<id>/smeta/upload` | POST | `smeta_upload` |
+| `/stages/<id>/smeta/<imp_id>/preview` | GET | `smeta_preview` |
+| `/stages/<id>/smeta/<imp_id>/confirm` | POST | `smeta_confirm` |
+| `/stages/<id>/smeta/<imp_id>/cancel` | POST | `smeta_cancel` |
+
+Доступ: только роли `('pto', 'manager', 'admin')` → константа `SMETA_ROLES`.
+
+### БД
+Таблица `smeta_imports` (миграция идемпотентна в `run_migrations()`):
+```sql
+id, stage_id, filename, source_type (xlsx|csv|pdf),
+status (parsed|confirmed|failed), rows_json,
+uploaded_by, uploaded_at, confirmed_at
+```
+
+### Логика парсинга
+1. **xlsx/csv** → детерминированный парсер: ищет заголовки через синонимы (рус/анг), парсит русские числа (`1 006,5` → `1006.5`), нормализует единицы.
+2. **PDF с текстовым слоем** → pdfplumber → детерминированный парсер → если 0 строк → ИИ-фолбэк.
+3. **PDF-скан** → Yandex Vision OCR (`ocr_pdf()`) → если есть текст → `ai_extract()` → note=`'ocr_ai'`.
+4. **ИИ-фолбэк** — абстракция за `AI_PROVIDER` в `.env`: `stub` (пустой список, без сети) | `yandexgpt` | `gigachat`.
+
+### Переменные окружения (только в `.env`, не в git)
+```
+AI_PROVIDER=yandexgpt          # или stub (для разработки)
+YANDEX_GPT_API_KEY=...
+YANDEX_FOLDER_ID=b1g2klri3f64ma6n1ovk
+YANDEX_GPT_MODEL=yandexgpt/latest
+```
+
+### Защита данных при замене (replace)
+`_check_replace_allowed(stage_id)` — блокирует режим «Заменить все» если на подэтапах уже есть: пакеты КС, фото, заявки на материалы, замечания или подэтапы в работе. Кнопка дизейблится на preview-экране; попытка в обход → flash + redirect.
+
+### Важные нюансы
+- `parse_pdf()` возвращает `(list[dict], note: str)`, `parse_file()` возвращает `list[dict]` (обратная совместимость).
+- Исходный файл автоматически прикрепляется к этапу как документ типа `price_doc`.
+- OCR скан-PDF с мержеными ячейками (работа+материалы в одной строке): имена позиций верны, суммы ±1%, qty/price ненадёжны — пользователь правит на preview-экране.
+- На prod Yandex Vision + YandexGPT — данные остаются в РФ (Yandex Cloud). Внешние API (OpenAI и др.) не используются.
+
+---
+
 ## Рабочий процесс
 Модулями (0–6, см. мастер-спецификацию). Для каждого — отдельное ТЗ с критериями приёмки, шаги по одному, после шага — самопроверка. Перед стартом модуля — `git checkout -b <модуль>`.
