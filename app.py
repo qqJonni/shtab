@@ -95,7 +95,7 @@ def create_app():
 
 
 def register_routes(app):
-    from routes import auth, notifications, dashboards, objects, defects, packages, supply, export, guest, admin, report_page, plans, journal, pwa, smeta
+    from routes import auth, notifications, dashboards, objects, defects, packages, supply, export, guest, admin, report_page, plans, journal, pwa, smeta, digest
     auth.register(app)
     notifications.register(app)
     dashboards.register(app)
@@ -111,6 +111,7 @@ def register_routes(app):
     journal.register(app)
     pwa.register(app)
     smeta.register(app)
+    digest.register(app)
 
 
 def init_db():
@@ -606,4 +607,5 @@ app = create_app()
 
 if __name__ == '__main__':
     init_db()
-    app.run(host='0.0.0.0', port=8080, debug=False, threaded=True)
+    port = int(os.environ.get('PORT', 8080))
+    app.run(host='0.0.0.0', port=port, debug=False, threaded=True)

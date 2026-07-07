@@ -1,0 +1,494 @@
+{% extends "base.html" %}
+{% block title %}Сводка — {{ obj.name }} — ШТАБ{% endblock %}
+{% block topbar_title %}{{ obj.name }} — Сводка{% endblock %}
+
+{# ── Макросы форматирования ─────────────────────────────────────────── #}
+{% macro fmt_date(s) %}
+  {%- if s %}{{ s[8:10] }}.{{ s[5:7] }}.{{ s[:4] }}{% else %}—{% endif -%}
+{% endmacro %}
+
+{% macro fmt_money(v) %}
+  {%- if v is not none and v != 0 -%}
+    {{ "{:,.0f}".format(v).replace(",", " ") }} ₽
+  {%- else %}—{%- endif -%}
+{% endmacro %}
+
+{% macro priority_badge(p) %}
+  {%- if p == 'critical' %}<span class="badge" style="background:#FEE2E2;color:#B91C1C">Критично</span>
+  {%- elif p == 'high' %}<span class="badge" style="background:#FEF3C7;color:#92400E">Высокий</span>
+  {%- elif p == 'normal' %}<span class="badge" style="background:#E0F2FE;color:#0369A1">Обычный</span>
+  {%- else %}<span class="badge" style="background:#F1F5F9;color:#64748B">Низкий</span>{%- endif -%}
+{% endmacro %}
+
+{% macro status_badge(s) %}
+  {%- if s == 'not_started' %}<span class="badge badge-pending">Не начат</span>
+  {%- elif s == 'in_progress' %}<span class="badge badge-progress">В работе</span>
+  {%- elif s in ('done','closed','approved') %}<span class="badge badge-done">Выполнен</span>
+  {%- elif s == 'open' %}<span class="badge badge-overdue">Открыто</span>
+  {%- elif s == 'in_progress' %}<span class="badge badge-progress">В работе</span>
+  {%- elif s == 'resolved' %}<span class="badge" style="background:#D1FAE5;color:#065F46">Устранено</span>
+  {%- else %}<span class="badge" style="background:#F1F5F9;color:#64748B">{{ s }}</span>{%- endif -%}
+{% endmacro %}
+
+{% block content %}
+{# ── Хлебные крошки ─────────────────────────────────────────────────── #}
+<div class="mb-3">
+  <a href="{{ url_for('object_detail', obj_id=obj.id) }}" class="text-decoration-none" style="font-size:13px">
+    <i class="bi bi-arrow-left me-1"></i>{{ obj.name }}
+  </a>
+</div>
+
+{# ── Заголовок + выбор периода ───────────────────────────────────────── #}
+<div class="d-flex flex-wrap justify-content-between align-items-center gap-3 mb-4">
+  <div>
+    <h4 class="fw-bold mb-0">Сводка по объекту</h4>
+    <div class="text-muted" style="font-size:13px">
+      Период: последние {{ d.period_days }} дн. · Сформировано {{ fmt_date(d.generated_at) }}
+    </div>
+  </div>
+  <div class="d-flex gap-2 align-items-center flex-wrap">
+    {# Кнопки периода #}
+    <div class="btn-group btn-group-sm" role="group">
+      <a href="{{ url_for('object_digest_view', obj_id=obj.id, period='week') }}"
+         class="btn {% if period == 'week' %}btn-primary{% else %}btn-outline-secondary{% endif %}">Неделя</a>
+      <a href="{{ url_for('object_digest_view', obj_id=obj.id, period='month') }}"
+         class="btn {% if period == 'month' %}btn-primary{% else %}btn-outline-secondary{% endif %}">Месяц</a>
+    </div>
+    {# Произвольный период #}
+    <form class="d-flex gap-1 align-items-center" method="get"
+          action="{{ url_for('object_digest_view', obj_id=obj.id) }}">
+      <input type="hidden" name="period" value="custom">
+      <input type="number" name="days" value="{{ period_days }}" min="1" max="365"
+             class="form-control form-control-sm" style="width:64px">
+      <span class="text-muted" style="font-size:13px">дн.</span>
+      <button type="submit" class="btn btn-sm btn-outline-secondary">→</button>
+    </form>
+    {# PDF #}
+    {% if current_user.role in ('manager', 'pto', 'admin') %}
+    <a href="{{ url_for('object_digest_pdf', obj_id=obj.id, period=period, days=period_days) }}"
+       class="btn btn-sm btn-outline-primary">
+      <i class="bi bi-file-earmark-pdf me-1"></i>Скачать PDF
+    </a>
+    {% endif %}
+  </div>
+</div>
+
+{# ══════════════════════════════════════════════════════════════════════
+   СТРОКА КЛЮЧЕВЫХ ПОКАЗАТЕЛЕЙ
+══════════════════════════════════════════════════════════════════════ #}
+<div class="row g-3 mb-4">
+
+  {# Готовность #}
+  <div class="col-6 col-lg-2">
+    <div class="card h-100 p-3">
+      <div class="text-muted mb-1" style="font-size:11px;text-transform:uppercase;letter-spacing:.5px">Готовность</div>
+      <div class="fw-bold mb-1" style="font-size:26px;color:var(--primary)">{{ d.progress_pct }}%</div>
+      <div style="font-size:12px;color:#64748B">{{ d.sub_done }} из {{ d.sub_total }} подэтапов</div>
+      <div class="progress mt-2" style="height:4px;border-radius:2px">
+        <div class="progress-bar" style="width:{{ d.progress_pct }}%;background:var(--primary)"></div>
+      </div>
+    </div>
+  </div>
+
+  {# Выполнено за период #}
+  <div class="col-6 col-lg-3">
+    <div class="card h-100 p-3">
+      <div class="text-muted mb-1" style="font-size:11px;text-transform:uppercase;letter-spacing:.5px">За {{ d.period_days }} дн.</div>
+      <div class="fw-bold" style="font-size:18px;color:var(--success)">{{ fmt_money(d.period_completed_sum) }}</div>
+      <div style="font-size:12px;color:#64748B">{{ d.sub_done_week }} подэт. завершено</div>
+      {% if d.pkgs_completed_week > 0 %}
+        <div style="font-size:12px;color:#64748B">{{ d.pkgs_completed_week }} пакет(ов) КС закрыто</div>
+      {% endif %}
+    </div>
+  </div>
+
+  {# Просрочено #}
+  <div class="col-6 col-lg-2">
+    {% set has_overdue = d.sub_overdue > 0 or d.stage_overdue > 0 %}
+    <div class="card h-100 p-3" style="{% if has_overdue %}border-left:3px solid var(--danger){% endif %}">
+      <div class="text-muted mb-1" style="font-size:11px;text-transform:uppercase;letter-spacing:.5px">Просрочено</div>
+      <div class="fw-bold" style="font-size:26px;color:{% if has_overdue %}var(--danger){% else %}var(--success){% endif %}">
+        {{ d.sub_overdue }}
+      </div>
+      <div style="font-size:12px;color:#64748B">подэтапов</div>
+      {% if d.stage_overdue > 0 %}
+        <div style="font-size:12px;color:var(--danger)">+{{ d.stage_overdue }} этап(ов)</div>
+      {% endif %}
+    </div>
+  </div>
+
+  {# Замечания #}
+  <div class="col-6 col-lg-2">
+    <a href="{{ url_for('defects_list', object_id=obj.id) }}" class="text-decoration-none">
+      <div class="card h-100 p-3" style="{% if d.defects_overdue > 0 %}border-left:3px solid var(--warning){% endif %}">
+        <div class="text-muted mb-1" style="font-size:11px;text-transform:uppercase;letter-spacing:.5px">Замечания</div>
+        <div class="fw-bold" style="font-size:26px;color:{% if d.defects_open > 0 %}var(--warning){% else %}var(--success){% endif %}">
+          {{ d.defects_open }}
+        </div>
+        <div style="font-size:12px;color:#64748B">открытых</div>
+        {% if d.defects_overdue > 0 %}
+          <div style="font-size:12px;color:var(--danger)">{{ d.defects_overdue }} просрочено</div>
+        {% endif %}
+      </div>
+    </a>
+  </div>
+
+  {# Согласования #}
+  <div class="col-6 col-lg-3">
+    <div class="card h-100 p-3" style="{% if d.pkgs_stalled > 0 or d.pkgs_returned > 0 %}border-left:3px solid var(--warning){% endif %}">
+      <div class="text-muted mb-1" style="font-size:11px;text-transform:uppercase;letter-spacing:.5px">Согласования</div>
+      <div class="fw-bold" style="font-size:26px;color:{% if d.pkgs_in_review > 0 %}var(--primary){% else %}var(--text-muted,#94A3B8){% endif %}">
+        {{ d.pkgs_in_review }}
+      </div>
+      <div style="font-size:12px;color:#64748B">на согласовании</div>
+      {% if d.pkgs_stalled > 0 %}
+        <div style="font-size:12px;color:var(--warning)">{{ d.pkgs_stalled }} зависло &gt;{{ d.period_days }}д</div>
+      {% endif %}
+      {% if d.pkgs_returned > 0 %}
+        <div style="font-size:12px;color:var(--danger)">{{ d.pkgs_returned }} возвращено</div>
+      {% endif %}
+    </div>
+  </div>
+
+</div>
+
+{# ══════════════════════════════════════════════════════════════════════
+   ТРЕБУЕТ ВНИМАНИЯ — показываем только если есть проблемы
+══════════════════════════════════════════════════════════════════════ #}
+{% set has_issues = d.sub_overdue > 0 or d.stage_overdue > 0 or d.defects_overdue > 0 or d.pkgs_stalled > 0 or d.pkgs_returned > 0 %}
+{% if has_issues %}
+<div class="card mb-4" style="border-left:4px solid var(--danger)">
+  <div class="card-body p-4">
+    <h6 class="fw-bold mb-3" style="color:var(--danger)">
+      <i class="bi bi-exclamation-triangle-fill me-2"></i>Требует внимания
+    </h6>
+
+    {# Просроченные подэтапы #}
+    {% if d.overdue_subs %}
+    <div class="mb-3">
+      <div class="fw-medium mb-2" style="font-size:13px">Просроченные подэтапы</div>
+      <div class="d-flex flex-column gap-1">
+        {% for s in d.overdue_subs %}
+        <div class="d-flex align-items-center justify-content-between p-2 rounded"
+             style="background:#FEF2F2;font-size:13px">
+          <div>
+            <a href="{{ url_for('stage_detail', stage_id=s.stage_id) }}"
+               class="fw-medium text-decoration-none" style="color:var(--danger)">{{ s.name }}</a>
+            <span class="text-muted ms-2" style="font-size:12px">{{ s.stage_name }}</span>
+          </div>
+          <div class="text-end" style="white-space:nowrap">
+            <span style="color:var(--danger);font-size:12px">+{{ s.days_overdue }} дн.</span>
+            <span class="text-muted ms-2" style="font-size:12px">план {{ fmt_date(s.plan_end_date) }}</span>
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+    {% endif %}
+
+    {# Просроченные этапы #}
+    {% if d.overdue_stages %}
+    <div class="mb-3">
+      <div class="fw-medium mb-2" style="font-size:13px">Просроченные этапы</div>
+      <div class="d-flex flex-column gap-1">
+        {% for s in d.overdue_stages %}
+        <div class="d-flex align-items-center justify-content-between p-2 rounded"
+             style="background:#FEF2F2;font-size:13px">
+          <a href="{{ url_for('stage_detail', stage_id=s.id) }}"
+             class="fw-medium text-decoration-none" style="color:var(--danger)">{{ s.name }}</a>
+          <span style="color:var(--danger);font-size:12px">+{{ s.days_overdue }} дн. · план {{ fmt_date(s.plan_end_date) }}</span>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+    {% endif %}
+
+    {# Зависшие согласования #}
+    {% if d.stalled_pkgs %}
+    <div class="mb-3">
+      <div class="fw-medium mb-2" style="font-size:13px">Пакеты КС зависли на согласовании</div>
+      <div class="d-flex flex-column gap-1">
+        {% for p in d.stalled_pkgs %}
+        <div class="d-flex align-items-center justify-content-between p-2 rounded"
+             style="background:#FFFBEB;font-size:13px">
+          <div>
+            <a href="{{ url_for('package_detail', package_id=p.id) }}"
+               class="fw-medium text-decoration-none" style="color:#92400E">{{ p.substage_name }}</a>
+          </div>
+          <div class="text-end" style="white-space:nowrap">
+            <span class="badge" style="background:#FEF3C7;color:#92400E">{{ p.pending_role_label }}</span>
+            <span class="text-muted ms-2" style="font-size:12px">{{ p.days_waiting }} дн.</span>
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+    {% endif %}
+
+    {# Возвращённые пакеты #}
+    {% if d.returned_pkgs %}
+    <div>
+      <div class="fw-medium mb-2" style="font-size:13px">Пакеты КС возвращены подрядчику</div>
+      <div class="d-flex flex-column gap-1">
+        {% for p in d.returned_pkgs %}
+        <div class="d-flex align-items-center justify-content-between p-2 rounded"
+             style="background:#FEF2F2;font-size:13px">
+          <a href="{{ url_for('package_detail', package_id=p.id) }}"
+             class="fw-medium text-decoration-none" style="color:var(--danger)">{{ p.substage_name }}</a>
+          <span class="text-muted" style="font-size:12px">{{ p.stage_name }}</span>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+    {% endif %}
+
+  </div>
+</div>
+{% endif %}
+
+{# ══════════════════════════════════════════════════════════════════════
+   ЧТО СДЕЛАНО ЗА ПЕРИОД
+══════════════════════════════════════════════════════════════════════ #}
+<div class="card mb-4">
+  <div class="card-body p-4">
+    <h6 class="fw-bold mb-3"><i class="bi bi-check2-circle me-2" style="color:var(--success)"></i>Что сделано за {{ d.period_days }} дней</h6>
+    {% if d.period_done_subs %}
+    <div class="d-flex flex-column gap-1">
+      {% for s in d.period_done_subs %}
+      <div class="d-flex align-items-center justify-content-between p-2 rounded"
+           style="background:#F0FDF4;font-size:13px">
+        <div>
+          <a href="{{ url_for('stage_detail', stage_id=s.stage_id) }}"
+             class="fw-medium text-decoration-none" style="color:var(--success)">{{ s.name }}</a>
+          <span class="text-muted ms-2" style="font-size:12px">{{ s.stage_name }}</span>
+        </div>
+        <div class="text-end" style="white-space:nowrap">
+          <span class="text-muted" style="font-size:12px">{{ fmt_date(s.completed_at) }}</span>
+          {% if s.total_price %}
+            <span class="ms-3 fw-medium" style="color:var(--success)">{{ fmt_money(s.total_price) }}</span>
+          {% endif %}
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+    {% else %}
+    <p class="text-muted mb-0" style="font-size:13px">За этот период завершённых подэтапов нет.</p>
+    {% endif %}
+
+    {% if d.defects_verified_week > 0 or d.defects_resolved_week > 0 %}
+    <div class="mt-3 pt-3" style="border-top:1px solid #F1F5F9">
+      <span class="text-muted" style="font-size:13px">
+        Замечания:
+        {% if d.defects_verified_week > 0 %}
+          <span class="badge badge-done ms-1">{{ d.defects_verified_week }} принято технадзором</span>
+        {% endif %}
+        {% if d.defects_resolved_week > 0 %}
+          <span class="badge" style="background:#D1FAE5;color:#065F46" class="ms-1">{{ d.defects_resolved_week }} устранено (ожидает проверки)</span>
+        {% endif %}
+      </span>
+    </div>
+    {% endif %}
+  </div>
+</div>
+
+{# ══════════════════════════════════════════════════════════════════════
+   ЗАМЕЧАНИЯ — топ открытых
+══════════════════════════════════════════════════════════════════════ #}
+{% if d.defects_open > 0 %}
+<div class="card mb-4">
+  <div class="card-body p-4">
+    <div class="d-flex justify-content-between align-items-center mb-3">
+      <h6 class="fw-bold mb-0"><i class="bi bi-exclamation-circle me-2" style="color:var(--warning)"></i>Замечания</h6>
+      <a href="{{ url_for('defects_list', object_id=obj.id) }}" class="text-decoration-none" style="font-size:13px">
+        Все {{ d.defects_open }} <i class="bi bi-arrow-right ms-1"></i>
+      </a>
+    </div>
+    <div class="d-flex flex-column gap-2">
+      {% for defect in d.top_defects %}
+      <a href="{{ url_for('defect_detail', defect_id=defect.id) }}" class="text-decoration-none">
+        <div class="d-flex align-items-center justify-content-between p-2 rounded"
+             style="background:{% if defect.overdue %}#FEF2F2{% else %}#F8FAFC{% endif %};transition:background .15s"
+             onmouseover="this.style.background='#F1F5F9'" onmouseout="this.style.background='{% if defect.overdue %}#FEF2F2{% else %}#F8FAFC{% endif %}'">
+          <div class="d-flex align-items-center gap-2">
+            {{ priority_badge(defect.priority) }}
+            <span class="fw-medium" style="font-size:13px;color:var(--text-main)">{{ defect.title }}</span>
+            {% if defect.stage_name %}
+              <span class="text-muted" style="font-size:12px">· {{ defect.stage_name }}</span>
+            {% endif %}
+          </div>
+          <div class="d-flex align-items-center gap-2" style="white-space:nowrap">
+            {% if defect.due_date %}
+              <span style="font-size:12px;color:{% if defect.overdue %}var(--danger){% else %}#64748B{% endif %}">
+                до {{ fmt_date(defect.due_date) }}
+                {% if defect.overdue %} (+{{ defect.days_overdue }}д){% endif %}
+              </span>
+            {% endif %}
+            {{ status_badge(defect.status) }}
+          </div>
+        </div>
+      </a>
+      {% endfor %}
+    </div>
+    {% if d.defects_open > d.top_defects|length %}
+    <div class="mt-2 text-center">
+      <a href="{{ url_for('defects_list', object_id=obj.id) }}" style="font-size:13px" class="text-decoration-none">
+        + ещё {{ d.defects_open - d.top_defects|length }} замечаний
+      </a>
+    </div>
+    {% endif %}
+  </div>
+</div>
+{% endif %}
+
+{# ══════════════════════════════════════════════════════════════════════
+   ДЕНЬГИ
+══════════════════════════════════════════════════════════════════════ #}
+<div class="card mb-4">
+  <div class="card-body p-4">
+    <h6 class="fw-bold mb-3"><i class="bi bi-currency-exchange me-2" style="color:var(--primary)"></i>Деньги</h6>
+    <div class="row g-3">
+      <div class="col-6 col-md-3">
+        <div class="text-muted" style="font-size:11px;text-transform:uppercase;letter-spacing:.5px">Смета (подэтапы)</div>
+        <div class="fw-bold mt-1" style="font-size:16px">{{ fmt_money(d.smeta_sum) }}</div>
+      </div>
+      <div class="col-6 col-md-3">
+        <div class="text-muted" style="font-size:11px;text-transform:uppercase;letter-spacing:.5px">Выполнено</div>
+        <div class="fw-bold mt-1" style="font-size:16px;color:var(--success)">{{ fmt_money(d.completed_sum) }}</div>
+      </div>
+      <div class="col-6 col-md-3">
+        <div class="text-muted" style="font-size:11px;text-transform:uppercase;letter-spacing:.5px">Остаток</div>
+        <div class="fw-bold mt-1" style="font-size:16px">{{ fmt_money(d.remaining_sum) }}</div>
+      </div>
+      <div class="col-6 col-md-3">
+        <div class="text-muted" style="font-size:11px;text-transform:uppercase;letter-spacing:.5px">Сумма договоров</div>
+        <div class="fw-bold mt-1" style="font-size:16px">{{ fmt_money(d.contract_sum) if d.contract_sum else '—' }}</div>
+        {% if d.contract_pct is not none %}
+          <div style="font-size:12px;color:#64748B">{{ d.contract_pct }}% выполнено</div>
+        {% endif %}
+      </div>
+    </div>
+
+    {# Мини-прогрессбар смета #}
+    {% if d.smeta_sum > 0 %}
+    <div class="mt-3">
+      {% set pct = ((d.completed_sum / d.smeta_sum) * 100)|round|int %}
+      <div class="d-flex justify-content-between mb-1" style="font-size:12px;color:#64748B">
+        <span>Выполнено от сметы</span><span>{{ pct }}%</span>
+      </div>
+      <div class="progress" style="height:8px;border-radius:4px">
+        <div class="progress-bar" style="width:{{ pct }}%;background:var(--success)"></div>
+      </div>
+    </div>
+    {% endif %}
+
+    {% if d.period_completed_sum > 0 %}
+    <div class="mt-3 pt-3" style="border-top:1px solid #F1F5F9;font-size:13px;color:#64748B">
+      За {{ d.period_days }} дней выполнено на
+      <strong style="color:var(--success)">{{ fmt_money(d.period_completed_sum) }}</strong>
+    </div>
+    {% endif %}
+  </div>
+</div>
+
+{# ══════════════════════════════════════════════════════════════════════
+   ЭТАПЫ — таблица с прогрессом
+══════════════════════════════════════════════════════════════════════ #}
+<div class="card mb-4">
+  <div class="card-body p-4">
+    <h6 class="fw-bold mb-3"><i class="bi bi-list-check me-2" style="color:var(--primary)"></i>Этапы строительства</h6>
+    <div class="table-responsive">
+      <table class="table table-hover mb-0" style="font-size:13px">
+        <thead>
+          <tr>
+            <th>Этап</th>
+            <th>Подрядчик</th>
+            <th class="text-center">Прогресс</th>
+            <th class="text-end">Смета</th>
+            <th class="text-end">Выполнено</th>
+            <th>Срок</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for s in d.stages %}
+          <tr {% if s.overdue %}style="background:#FEF2F2"{% endif %}>
+            <td>
+              <a href="{{ url_for('stage_detail', stage_id=s.id) }}"
+                 class="fw-medium text-decoration-none" style="color:{% if s.overdue %}var(--danger){% else %}var(--text-main){% endif %}">
+                {{ s.name }}
+              </a>
+              {% if s.status == 'done' %}<span class="badge badge-done ms-1">Завершён</span>
+              {% elif s.status == 'suspended' %}<span class="badge badge-rework ms-1">Приостановлен</span>
+              {% elif s.overdue %}<span class="badge badge-overdue ms-1">Просрочен</span>
+              {% endif %}
+            </td>
+            <td class="text-muted">{{ s.contractor_name or '—' }}</td>
+            <td style="min-width:120px">
+              <div class="d-flex align-items-center gap-2">
+                <div class="progress flex-grow-1" style="height:6px;border-radius:3px">
+                  <div class="progress-bar"
+                       style="width:{{ s.progress_pct }}%;background:{% if s.overdue %}var(--danger){% else %}var(--primary){% endif %}"></div>
+                </div>
+                <span style="font-size:12px;color:#64748B;white-space:nowrap">
+                  {{ s.progress_pct }}%
+                </span>
+              </div>
+              <div style="font-size:11px;color:#94A3B8">{{ s.sub_done }}/{{ s.sub_total }}</div>
+            </td>
+            <td class="text-end text-muted">{{ fmt_money(s.smeta_sum) if s.smeta_sum else '—' }}</td>
+            <td class="text-end" style="color:var(--success)">{{ fmt_money(s.completed_sum) if s.completed_sum else '—' }}</td>
+            <td style="white-space:nowrap">
+              {% if s.plan_end_date %}
+                <span style="color:{% if s.overdue %}var(--danger){% else %}#64748B{% endif %}">
+                  {{ fmt_date(s.plan_end_date) }}
+                  {% if s.overdue %}<br><span style="font-size:11px">+{{ s.days_overdue }} дн.</span>{% endif %}
+                </span>
+              {% else %}—{% endif %}
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+{# ══════════════════════════════════════════════════════════════════════
+   ЖУРНАЛ — активность за период
+══════════════════════════════════════════════════════════════════════ #}
+{% if d.journal %}
+<div class="card mb-4">
+  <div class="card-body p-4">
+    <div class="d-flex justify-content-between align-items-center mb-3">
+      <h6 class="fw-bold mb-0"><i class="bi bi-journal-text me-2" style="color:#64748B"></i>Активность за {{ d.period_days }} дней</h6>
+      <a href="{{ url_for('journal_list', obj_id=obj.id) }}" class="text-decoration-none" style="font-size:13px">
+        Весь журнал <i class="bi bi-arrow-right ms-1"></i>
+      </a>
+    </div>
+    <div class="d-flex flex-column gap-2">
+      {% for je in d.journal %}
+      <div class="d-flex gap-3 p-2 rounded" style="background:#F8FAFC;font-size:13px">
+        <div style="white-space:nowrap;color:#64748B;min-width:72px">{{ fmt_date(je.entry_date) }}</div>
+        <div class="flex-grow-1">
+          {% if je.work_type %}
+            <span class="fw-medium">{{ je.work_type }}</span>
+            {% if je.text %}<span class="text-muted"> — {{ je.text[:80] }}{% if je.text|length > 80 %}…{% endif %}</span>{% endif %}
+          {% else %}
+            <span class="text-muted">{{ je.text[:100] if je.text else '—' }}</span>
+          {% endif %}
+        </div>
+        <div style="white-space:nowrap;color:#94A3B8">{{ je.contractor_name or je.author_name or '' }}</div>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+</div>
+{% else %}
+<div class="card mb-4">
+  <div class="card-body p-4 text-center text-muted" style="font-size:13px">
+    <i class="bi bi-journal-text" style="font-size:32px;opacity:.3"></i>
+    <p class="mt-2 mb-0">Записей в журнале за этот период нет.</p>
+  </div>
+</div>
+{% endif %}
+
+{% endblock %}
