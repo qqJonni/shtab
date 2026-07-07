@@ -1,5 +1,6 @@
 import json
 import os
+import shutil
 import uuid
 
 from flask import abort, flash, redirect, render_template, request, url_for
@@ -24,6 +25,20 @@ def _save_file(file, stage_id: int) -> str:
     path = os.path.join(folder, f'{uuid.uuid4().hex}.{ext}')
     file.save(path)
     return path
+
+
+def _attach_as_stage_doc(db, filepath: str, original_filename: str, stage_id: int):
+    """Копирует файл сметы в static/docs/<stage_id>/ и регистрирует как price_doc."""
+    ext = _ext(original_filename)
+    docs_folder = os.path.join(config.BASE_DIR, 'static', 'docs', str(stage_id))
+    os.makedirs(docs_folder, exist_ok=True)
+    dest_name = f'{uuid.uuid4().hex}.{ext}'
+    shutil.copy2(filepath, os.path.join(docs_folder, dest_name))
+    db.execute(
+        '''INSERT INTO stage_documents (stage_id, doc_type, title, filename, uploaded_by)
+           VALUES (?, ?, ?, ?, ?)''',
+        (stage_id, 'price_doc', original_filename, dest_name, current_user.id),
+    )
 
 
 def register(app):
@@ -90,17 +105,23 @@ def register(app):
             (stage_id,), one=True,
         )
         imp = query_db(
-            'SELECT * FROM smeta_imports WHERE id = ? AND stage_id = ?',
-            (import_id, stage_id), one=True,
+            'SELECT * FROM smeta_imports WHERE id = ? AND stage_id = ? AND status = ?',
+            (import_id, stage_id, 'parsed'), one=True,
         )
         if not stage or not imp:
             abort(404)
 
         rows = json.loads(imp['rows_json'] or '[]')
+        existing_count = query_db(
+            'SELECT COUNT(*) as cnt FROM substages WHERE stage_id = ?',
+            (stage_id,), one=True,
+        )['cnt']
+
         return render_template(
             'smeta/preview.html',
             stage=stage, imp=imp, rows=rows,
             units=config.UNITS,
+            existing_count=existing_count,
         )
 
     # ── Подтверждение: создаём подэтапы ────────────────────────────────────
@@ -118,34 +139,39 @@ def register(app):
         if not stage or not imp:
             abort(404)
 
-        names = request.form.getlist('name')
-        units = request.form.getlist('unit')
-        quantities = request.form.getlist('quantity')
+        import_mode = request.form.get('import_mode', 'add')  # 'add' | 'replace'
+
+        names       = request.form.getlist('name')
+        units_list  = request.form.getlist('unit')
+        quantities  = request.form.getlist('quantity')
         unit_prices = request.form.getlist('unit_price')
-        totals = request.form.getlist('total')
+        totals      = request.form.getlist('total')
+
+        def _f(lst, idx):
+            try:
+                v = lst[idx].strip().replace(',', '.')
+                return float(v) if v else None
+            except (IndexError, ValueError):
+                return None
 
         db = get_db()
+
+        # Режим «заменить» — удаляем существующие подэтапы
+        if import_mode == 'replace':
+            db.execute('DELETE FROM substages WHERE stage_id = ?', (stage_id,))
+
         created = 0
         for i, name in enumerate(names):
             name = name.strip()
             if not name:
                 continue
-
-            def _f(lst, idx):
-                try:
-                    v = lst[idx].strip().replace(',', '.')
-                    return float(v) if v else None
-                except (IndexError, ValueError):
-                    return None
-
-            qty = _f(quantities, i)
-            price = _f(unit_prices, i)
-            total = _f(totals, i)
-            unit = units[i].strip() if i < len(units) else ''
-            total_price = total if total else (
+            qty        = _f(quantities, i)
+            price      = _f(unit_prices, i)
+            total      = _f(totals, i)
+            unit       = units_list[i].strip() if i < len(units_list) else ''
+            total_price = total if total is not None else (
                 round(qty * price, 2) if qty and price else None
             )
-
             db.execute(
                 '''INSERT INTO substages
                    (stage_id, name, volume, unit, unit_price, total_price, created_by)
@@ -154,6 +180,21 @@ def register(app):
             )
             created += 1
 
+        # Прикрепляем исходный файл как документ этапа (price_doc)
+        smeta_folder = os.path.join(config.BASE_DIR, 'static', 'smeta', str(stage_id))
+        # ищем файл: имя хранится в imp['filename'] (оригинальное), физический путь —
+        # последний по mtime файл в папке смет этапа
+        smeta_files = []
+        if os.path.isdir(smeta_folder):
+            smeta_files = [
+                os.path.join(smeta_folder, fn)
+                for fn in os.listdir(smeta_folder)
+                if not fn.startswith('.')
+            ]
+        if smeta_files:
+            latest = max(smeta_files, key=os.path.getmtime)
+            _attach_as_stage_doc(db, latest, imp['filename'], stage_id)
+
         db.execute(
             "UPDATE smeta_imports SET status = 'confirmed', confirmed_at = "
             "to_char(now(),'YYYY-MM-DD HH24:MI:SS') WHERE id = ?",
@@ -161,7 +202,8 @@ def register(app):
         )
         db.commit()
 
-        flash(f'Создано подэтапов: {created}.', 'success')
+        mode_label = 'заменены' if import_mode == 'replace' else 'добавлено'
+        flash(f'Подэтапов {mode_label}: {created}. Файл сметы прикреплён к этапу.', 'success')
         return redirect(url_for('stage_detail', stage_id=stage_id))
 
     # ── Отмена черновика ────────────────────────────────────────────────────
