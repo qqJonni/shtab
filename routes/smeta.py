@@ -11,7 +11,7 @@ import smeta_parser
 from db import get_db, query_db
 
 SMETA_ROLES = ('pto', 'manager', 'admin')
-ALLOWED_EXT = {'xlsx', 'csv'}
+ALLOWED_EXT = {'xlsx', 'csv', 'pdf'}
 
 
 def _ext(filename: str) -> str:
@@ -128,7 +128,21 @@ def register(app):
             return redirect(url_for('stage_detail', stage_id=stage_id))
 
         filepath = _save_file(f, stage_id)
-        rows = smeta_parser.parse_file(filepath, ext)
+        parse_note = ''
+        if ext == 'pdf':
+            rows, parse_note = smeta_parser.parse_pdf(filepath)
+        else:
+            rows = smeta_parser.parse_file(filepath, ext)
+
+        if parse_note == 'needs_ocr':
+            flash(
+                'PDF не содержит текстового слоя — файл, вероятно, является скан-копией. '
+                'Распознавание скан-PDF (OCR) будет добавлено позже. '
+                'Загрузите смету в формате xlsx или csv.',
+                'warning',
+            )
+            return redirect(url_for('stage_detail', stage_id=stage_id))
+
         status = 'parsed' if rows else 'failed'
 
         db = get_db()
@@ -154,6 +168,12 @@ def register(app):
             )
             return redirect(url_for('stage_detail', stage_id=stage_id))
 
+        if parse_note == 'ai_used':
+            flash(
+                'Детерминированный парсер не смог разметить столбцы — '
+                'позиции восстановлены ИИ-фолбэком. Проверьте данные внимательно.',
+                'info',
+            )
         return redirect(url_for('smeta_preview', stage_id=stage_id, import_id=imp['id']))
 
     # ── Предпросмотр черновика ──────────────────────────────────────────────

@@ -295,19 +295,108 @@ def parse_csv(filepath: str) -> list[dict]:
     return []
 
 
+def _extract_pdf_text(filepath: str) -> tuple[str, str]:
+    """
+    Извлекает текстовый слой PDF.
+    Возвращает (text, status): status = 'ok' | 'needs_ocr' | 'error'.
+    Требует pdfplumber (pip install pdfplumber).
+    """
+    try:
+        import pdfplumber
+    except ImportError:
+        return '', 'error'
+    try:
+        with pdfplumber.open(filepath) as pdf:
+            pages = []
+            for page in pdf.pages:
+                t = page.extract_text()
+                if t:
+                    pages.append(t)
+        if not pages:
+            return '', 'needs_ocr'
+        return '\n'.join(pages), 'ok'
+    except Exception:
+        return '', 'error'
+
+
+def parse_pdf(filepath: str) -> tuple[list[dict], str]:
+    """
+    Парсит PDF-смету.
+    Возвращает (rows, note):
+      note = '' — ОК, 'needs_ocr' — скан без текстового слоя,
+             'ai_used' — детерминированный не сработал, пошёл ИИ.
+    """
+    text, status = _extract_pdf_text(filepath)
+    if status == 'needs_ocr':
+        return [], 'needs_ocr'
+    if not text:
+        return [], 'error'
+
+    # Пробуем детерминированный парсер по строкам текста
+    text_rows = [line.split('\t') if '\t' in line else [line]
+                 for line in text.splitlines() if line.strip()]
+    det_rows = _parse_rows(text_rows)
+
+    if det_rows:
+        return det_rows, ''
+
+    # Детерминированный не справился → ИИ-фолбэк
+    import ai_extractor
+    ai_rows = ai_extractor.ai_extract(text)
+    return ai_rows, 'ai_used'
+
+
 # ── Публичная точка входа ─────────────────────────────────────────────────
 
 def parse_file(filepath: str, source_type: str) -> list[dict]:
     """
     Возвращает список позиций (может быть пустым — тогда статус 'failed').
     source_type: 'xlsx' | 'csv' | 'pdf'
+    Для xlsx/csv при пустом детерминированном результате → ИИ-фолбэк.
     """
     try:
         if source_type == 'xlsx':
-            return parse_xlsx(filepath)
+            rows = parse_xlsx(filepath)
         elif source_type == 'csv':
-            return parse_csv(filepath)
+            rows = parse_csv(filepath)
+        elif source_type == 'pdf':
+            rows, _note = parse_pdf(filepath)
+            return rows
         else:
-            return []  # PDF → ИИ-фолбэк будет добавлен на шаге 4
+            return []
+
+        # ИИ-фолбэк для xlsx/csv: если детерминированный вернул 0 строк
+        if not rows:
+            import ai_extractor
+            # Читаем файл повторно как сырой текст для ИИ
+            raw_text = _file_to_text(filepath, source_type)
+            if raw_text:
+                rows = ai_extractor.ai_extract(raw_text)
+        return rows
     except Exception:
         return []
+
+
+def _file_to_text(filepath: str, source_type: str) -> str:
+    """Читает файл в сырой текст для передачи в ИИ-фолбэк."""
+    try:
+        if source_type == 'xlsx':
+            from openpyxl import load_workbook as _lw
+            wb = _lw(filepath, data_only=True)
+            ws = wb.active
+            lines = []
+            for row in ws.iter_rows(values_only=True):
+                cells = [str(c) if c is not None else '' for c in row]
+                if any(c.strip() for c in cells):
+                    lines.append('\t'.join(cells))
+            return '\n'.join(lines)
+        elif source_type == 'csv':
+            for enc in ('utf-8-sig', 'cp1251', 'utf-8'):
+                try:
+                    with open(filepath, encoding=enc) as f:
+                        return f.read(20000)
+                except UnicodeDecodeError:
+                    continue
+        return ''
+    except Exception:
+        return ''
