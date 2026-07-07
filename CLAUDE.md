@@ -105,5 +105,52 @@ YANDEX_GPT_MODEL=yandexgpt/latest
 
 ---
 
+## Модуль «Дайджест по объекту» — ветка object-digest
+
+### Что сделано (Шаги 1–3)
+Сводный экран руководителя по объекту + PDF-экспорт + скрипт еженедельной рассылки.
+
+### Новые файлы
+```
+digest.py                   — object_digest(obj_id, period_days=7) -> dict
+routes/digest.py            — маршруты + _build_digest_pdf() + send_weekly_digests()
+templates/digest/view.html  — экран сводки с выбором периода
+```
+
+### Маршруты
+| URL | Endpoint |
+|-----|----------|
+| `/objects/<id>/digest` | `object_digest_view` |
+| `/objects/<id>/digest/pdf` | `object_digest_pdf` |
+
+Доступ: `('manager', 'admin', 'pto')`.
+
+### Источники данных
+- Деньги: `substages.total_price` (надёжно), `construction_stages.contract_amount`
+- Временны́е метки: `substages.completed_at`, `doc_packages.completed_at / submitted_at`, `defects.verified_at / resolved_at`
+- `doc_packages.amount` не существует — не использовать
+
+### Еженедельная рассылка — cron на сервере
+
+**Путь на сервере уточнить при первом деплое.** Рабочее название сервиса — `shtab` (по аналогии с репозиторием). Ориентировочный путь: `/var/www/shtab/`. После деплоя скорректировать команду ниже.
+
+```bash
+# crontab -e  (от пользователя www-data или root)
+# Каждый понедельник в 08:00
+0 8 * * 1 cd /var/www/shtab && /var/www/shtab/venv/bin/python3 -c \
+  "from routes.digest import send_weekly_digests; send_weekly_digests()" \
+  >> /var/log/shtab-digest.log 2>&1
+```
+
+Проверка вручную (на сервере):
+```bash
+cd /var/www/shtab
+python3 -c "from routes.digest import send_weekly_digests; send_weekly_digests()"
+```
+
+Повторный запуск безопасен — `notify()` добавляет новую запись, дублей в логике нет (cron запускается раз в неделю).
+
+---
+
 ## Рабочий процесс
 Модулями (0–6, см. мастер-спецификацию). Для каждого — отдельное ТЗ с критериями приёмки, шаги по одному, после шага — самопроверка. Перед стартом модуля — `git checkout -b <модуль>`.
