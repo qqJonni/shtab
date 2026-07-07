@@ -116,7 +116,7 @@ def object_digest(obj_id: int, period_days: int = 7) -> dict:
 
     # Завершённые за период — список
     period_done_subs = query_db(
-        "SELECT ss.id, ss.name, ss.status, ss.completed_at, "
+        "SELECT ss.id, ss.name, ss.status, ss.completed_at, ss.stage_id, "
         "COALESCE(ss.total_price, 0) as total_price, "
         "cs.name as stage_name "
         "FROM substages ss "
