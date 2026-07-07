@@ -48,24 +48,42 @@
 
 {# ── Предупреждение о существующих подэтапах ─────────────────────────── #}
 {% if existing_count > 0 %}
-<div class="alert d-flex align-items-center gap-2 mb-3" role="alert"
+<div class="alert d-flex align-items-start gap-2 mb-3" role="alert"
   style="background:rgba(245,158,11,.08);border:1px solid rgba(245,158,11,.25);border-radius:12px;color:#92400E">
-  <i class="bi bi-exclamation-triangle-fill text-warning flex-shrink-0"></i>
-  <div style="font-size:13px">
-    У этапа уже есть <strong>{{ existing_count }} подэтап(ов)</strong>.
-    Выберите режим импорта:
-    <div class="mt-2 d-flex gap-2">
-      <div class="form-check form-check-inline mb-0">
+  <i class="bi bi-exclamation-triangle-fill text-warning flex-shrink-0 mt-1"></i>
+  <div style="font-size:13px;width:100%">
+    У этапа уже есть <strong>{{ existing_count }} подэтап(ов)</strong>. Выберите режим:
+    <div class="mt-2 d-flex flex-wrap gap-3">
+      <div class="form-check mb-0">
         <input class="form-check-input" type="radio" name="import_mode" id="mode-add" value="add" checked>
-        <label class="form-check-label" for="mode-add" style="font-size:13px">Добавить к существующим</label>
+        <label class="form-check-label fw-medium" for="mode-add">Добавить к существующим</label>
       </div>
-      <div class="form-check form-check-inline mb-0">
-        <input class="form-check-input" type="radio" name="import_mode" id="mode-replace" value="replace">
-        <label class="form-check-label" for="mode-replace" style="font-size:13px;color:#EF4444">
-          Заменить все (удалить {{ existing_count }} старых)
+      <div class="form-check mb-0">
+        {% if replace_blocked %}
+        <input class="form-check-input" type="radio" name="import_mode" id="mode-replace"
+          value="replace" disabled>
+        <label class="form-check-label" for="mode-replace"
+          style="color:#94A3B8;text-decoration:line-through">
+          Заменить все
         </label>
+        {% else %}
+        <input class="form-check-input" type="radio" name="import_mode" id="mode-replace" value="replace">
+        <label class="form-check-label" for="mode-replace" style="color:#EF4444">
+          Заменить все (удалить {{ existing_count }})
+        </label>
+        {% endif %}
       </div>
     </div>
+    {% if replace_blocked %}
+    <div class="mt-2 p-2 rounded" style="background:rgba(239,68,68,.06);border:1px solid rgba(239,68,68,.15);font-size:12px;color:#B91C1C">
+      <i class="bi bi-lock-fill me-1"></i>
+      Замена заблокирована — на подэтапах уже есть:
+      {% for label, cnt in replace_blocked.items() %}
+        <strong>{{ cnt }} {{ label }}</strong>{% if not loop.last %},{% endif %}
+      {% endfor %}.
+      Используйте «Добавить».
+    </div>
+    {% endif %}
   </div>
 </div>
 {% endif %}

@@ -27,6 +27,69 @@ def _save_file(file, stage_id: int) -> str:
     return path
 
 
+def _check_replace_allowed(stage_id: int) -> dict | None:
+    """
+    Проверяет, можно ли заменять подэтапы этапа.
+    Возвращает None если можно, иначе dict с причинами блокировки.
+    """
+    # Подэтапы этапа
+    sub_ids_row = query_db(
+        'SELECT array_agg(id) as ids FROM substages WHERE stage_id = ?',
+        (stage_id,), one=True,
+    )
+    sub_ids = sub_ids_row['ids'] if sub_ids_row and sub_ids_row['ids'] else []
+    if not sub_ids:
+        return None
+
+    # Форматируем список для IN-запроса
+    placeholders = ','.join(['?' for _ in sub_ids])
+
+    # Пакеты документов (КС-2, КС-3...)
+    pkg_row = query_db(
+        f'SELECT COUNT(*) as cnt FROM doc_packages WHERE substage_id IN ({placeholders})',
+        sub_ids, one=True,
+    )
+    packages = pkg_row['cnt'] if pkg_row else 0
+
+    # Фото выполнения
+    photo_row = query_db(
+        f'SELECT COUNT(*) as cnt FROM substage_photos WHERE substage_id IN ({placeholders})',
+        sub_ids, one=True,
+    )
+    photos = photo_row['cnt'] if photo_row else 0
+
+    # Заявки на материалы
+    mr_row = query_db(
+        f'SELECT COUNT(*) as cnt FROM material_requests WHERE substage_id IN ({placeholders})',
+        sub_ids, one=True,
+    )
+    material_requests = mr_row['cnt'] if mr_row else 0
+
+    # Замечания
+    defect_row = query_db(
+        f'SELECT COUNT(*) as cnt FROM defects WHERE substage_id IN ({placeholders})',
+        sub_ids, one=True,
+    )
+    defects = defect_row['cnt'] if defect_row else 0
+
+    # Подэтапы с прогрессом (статус не not_started)
+    active_row = query_db(
+        f"SELECT COUNT(*) as cnt FROM substages WHERE id IN ({placeholders}) "
+        f"AND status != 'not_started'",
+        sub_ids, one=True,
+    )
+    active = active_row['cnt'] if active_row else 0
+
+    blocking = {}
+    if packages:        blocking['пакетов документов (КС)'] = packages
+    if photos:          blocking['фото выполнения'] = photos
+    if material_requests: blocking['заявок на материалы'] = material_requests
+    if defects:         blocking['замечаний'] = defects
+    if active:          blocking['подэтапов в работе/завершённых'] = active
+
+    return blocking if blocking else None
+
+
 def _attach_as_stage_doc(db, filepath: str, original_filename: str, stage_id: int):
     """Копирует файл сметы в static/docs/<stage_id>/ и регистрирует как price_doc."""
     ext = _ext(original_filename)
@@ -117,11 +180,15 @@ def register(app):
             (stage_id,), one=True,
         )['cnt']
 
+        # Если подэтапы есть — заранее проверяем можно ли их заменить
+        replace_blocked = _check_replace_allowed(stage_id) if existing_count else None
+
         return render_template(
             'smeta/preview.html',
             stage=stage, imp=imp, rows=rows,
             units=config.UNITS,
             existing_count=existing_count,
+            replace_blocked=replace_blocked,
         )
 
     # ── Подтверждение: создаём подэтапы ────────────────────────────────────
@@ -140,6 +207,19 @@ def register(app):
             abort(404)
 
         import_mode = request.form.get('import_mode', 'add')  # 'add' | 'replace'
+
+        # Защита от деструктивной замены при наличии связанных данных
+        if import_mode == 'replace':
+            blocking = _check_replace_allowed(stage_id)
+            if blocking:
+                details = ', '.join(f'{v} {k}' for k, v in blocking.items())
+                flash(
+                    f'Замена запрещена — на подэтапах уже есть данные: {details}. '
+                    'Используйте режим «Добавить к существующим».',
+                    'danger',
+                )
+                return redirect(url_for('smeta_preview', stage_id=stage_id,
+                                        import_id=import_id))
 
         names       = request.form.getlist('name')
         units_list  = request.form.getlist('unit')
