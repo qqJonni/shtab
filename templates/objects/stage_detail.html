@@ -93,7 +93,7 @@
               accept=".xlsx,.csv,.pdf" required>
             <div class="form-text">
               Форматы: xlsx, csv, pdf (сканы — OCR + ИИ, возможны неточности).
-              <span class="text-success fw-medium">Есть xlsx-версия? Загрузите её — точность 100%.</span>
+              <span class="text-success fw-medium">Есть xlsx-версия? Загрузите её — точность 99%.</span>
             </div>
           </div>
         </div>
@@ -267,4 +267,178 @@
     </div>
   </div>
 {% endif %}
+
+{# ═══ Исполнительная документация ═══ #}
+<div class="d-flex justify-content-between align-items-center mb-3 mt-4" id="id-checklist">
+  <h5 class="fw-bold mb-0">
+    <i class="bi bi-folder2-open me-2" style="color:var(--primary)"></i>Исполнительная документация
+    {% if id_items %}
+      <span class="badge ms-2" style="background:{% if id_required_done == id_required_total and id_required_total > 0 %}var(--success){% else %}var(--warning){% endif %};font-size:12px;font-weight:500">
+        {{ id_required_done }}/{{ id_required_total }} обязательных
+      </span>
+    {% endif %}
+  </h5>
+</div>
+
+{% if can_edit_id %}
+<div class="card mb-3">
+  <div class="card-body p-3">
+    <div class="fw-medium mb-3" style="font-size:14px">Добавить пункт ИД</div>
+    <form method="post" action="{{ url_for('id_item_add', stage_id=stage.id) }}">
+      <div class="row g-2 align-items-end">
+        <div class="col-md-5">
+          <label class="form-label" style="font-size:12px;color:var(--text-muted)">Из справочника</label>
+          <select name="type_id" class="form-select" style="height:44px;border-radius:8px;font-size:14px">
+            <option value="">— выбрать тип —</option>
+            {% for t in id_item_types %}
+              <option value="{{ t.id }}">{{ t.name }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="col-auto d-flex align-items-end pb-1" style="color:var(--text-muted);font-size:13px">или</div>
+        <div class="col-md-4">
+          <label class="form-label" style="font-size:12px;color:var(--text-muted)">Произвольное название</label>
+          <input type="text" name="custom_title" class="form-control" style="height:44px;border-radius:8px;font-size:14px" placeholder="Свой документ…">
+        </div>
+        <div class="col-auto">
+          <div class="form-check mb-2">
+            <input class="form-check-input" type="checkbox" name="is_required" id="id-required-check" checked>
+            <label class="form-check-label" for="id-required-check" style="font-size:13px">Обязательный</label>
+          </div>
+          <button type="submit" class="btn btn-primary" style="height:44px;border-radius:8px;padding:0 20px">
+            <i class="bi bi-plus-lg me-1"></i>Добавить
+          </button>
+        </div>
+      </div>
+    </form>
+  </div>
+</div>
+{% endif %}
+
+{% if not id_items %}
+<div class="card mb-4">
+  <div class="card-body text-center py-4 text-muted">
+    <i class="bi bi-folder2-open" style="font-size:36px;opacity:.3"></i>
+    <p class="mt-2 mb-0" style="font-size:13px">
+      {% if can_edit_id %}Состав ИД не задан. Добавьте пункты выше.{% else %}Состав ИД не задан.{% endif %}
+    </p>
+  </div>
+</div>
+{% else %}
+<div class="card mb-4">
+  <div class="table-responsive">
+    <table class="table table-hover mb-0">
+      <thead>
+        <tr>
+          <th style="width:34px"></th>
+          <th>Документ</th>
+          <th style="width:110px">Статус</th>
+          <th>Файлы</th>
+          <th style="width:130px" class="text-end">Действия</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for item in id_items %}
+        {% set files = id_files_by_item.get(item.id, []) %}
+        <tr>
+          <td class="text-center" style="vertical-align:middle">
+            {% if files %}
+              <i class="bi bi-check-circle-fill" style="color:var(--success);font-size:16px" title="Файлы загружены"></i>
+            {% elif item.is_required %}
+              <i class="bi bi-circle" style="color:var(--warning);font-size:16px" title="Обязательный, файлов нет"></i>
+            {% else %}
+              <i class="bi bi-circle" style="color:#CBD5E1;font-size:16px" title="Необязательный, файлов нет"></i>
+            {% endif %}
+          </td>
+
+          <td style="vertical-align:middle">
+            <div class="fw-medium" style="font-size:14px">{{ item.title }}</div>
+            {% if not item.is_required %}
+              <span style="font-size:11px;color:var(--text-muted)">необязательный</span>
+            {% endif %}
+          </td>
+
+          <td style="vertical-align:middle">
+            {% if files %}
+              <span class="badge badge-done">Загружен</span>
+            {% elif item.is_required %}
+              <span class="badge badge-rework">Требуется</span>
+            {% else %}
+              <span class="badge badge-pending">Ожидается</span>
+            {% endif %}
+          </td>
+
+          <td style="vertical-align:middle">
+            {% if files %}
+              <div class="d-flex flex-column gap-1">
+                {% for f in files %}
+                <div class="d-flex align-items-center gap-1">
+                  <a href="{{ url_for('id_file_download', stage_id=stage.id, file_id=f.id) }}"
+                     class="text-decoration-none" style="font-size:12px;color:var(--primary)">
+                    <i class="bi bi-file-earmark me-1"></i>{{ f.original_name or f.filename }}
+                  </a>
+                  {% if can_edit_id or f.uploaded_by == current_user.id %}
+                  <form method="post" action="{{ url_for('id_file_delete', stage_id=stage.id, file_id=f.id) }}"
+                        class="d-inline" onsubmit="return confirm('Удалить файл?')">
+                    <button class="btn btn-sm py-0 px-1" style="color:#94A3B8;border:none;background:none" title="Удалить файл">
+                      <i class="bi bi-x"></i>
+                    </button>
+                  </form>
+                  {% endif %}
+                </div>
+                {% endfor %}
+              </div>
+            {% else %}
+              <span class="text-muted" style="font-size:12px">—</span>
+            {% endif %}
+
+            {% if can_upload_id %}
+            <form method="post" action="{{ url_for('id_file_upload', stage_id=stage.id, item_id=item.id) }}"
+                  enctype="multipart/form-data" class="mt-1">
+              <label class="btn btn-sm btn-outline-secondary py-0 px-2" style="font-size:12px;cursor:pointer">
+                <i class="bi bi-upload me-1"></i>Загрузить
+                <input type="file" name="files" multiple class="d-none"
+                       accept=".pdf,.doc,.docx,.xls,.xlsx,.jpg,.jpeg,.png,.dwg,.dxf,.zip"
+                       onchange="this.form.submit()">
+              </label>
+            </form>
+            {% endif %}
+          </td>
+
+          <td class="text-end" style="vertical-align:middle">
+            {% if can_edit_id %}
+            <div class="d-inline-flex gap-1">
+              <form method="post" action="{{ url_for('id_item_move', stage_id=stage.id, item_id=item.id, direction='up') }}" class="d-inline">
+                <button class="btn btn-sm btn-outline-secondary py-0 px-1" title="Вверх"{% if loop.first %} disabled{% endif %}>
+                  <i class="bi bi-chevron-up"></i>
+                </button>
+              </form>
+              <form method="post" action="{{ url_for('id_item_move', stage_id=stage.id, item_id=item.id, direction='down') }}" class="d-inline">
+                <button class="btn btn-sm btn-outline-secondary py-0 px-1" title="Вниз"{% if loop.last %} disabled{% endif %}>
+                  <i class="bi bi-chevron-down"></i>
+                </button>
+              </form>
+              <form method="post" action="{{ url_for('id_item_toggle_required', stage_id=stage.id, item_id=item.id) }}" class="d-inline">
+                <button class="btn btn-sm btn-outline-secondary py-0 px-1"
+                        title="{{ 'Сделать необязательным' if item.is_required else 'Сделать обязательным' }}">
+                  <i class="bi bi-{{ 'star-fill' if item.is_required else 'star' }}" style="font-size:11px"></i>
+                </button>
+              </form>
+              <form method="post" action="{{ url_for('id_item_delete', stage_id=stage.id, item_id=item.id) }}"
+                    class="d-inline" onsubmit="return confirm('Удалить пункт ИД?')">
+                <button class="btn btn-sm btn-outline-danger py-0 px-1" title="Удалить пункт">
+                  <i class="bi bi-trash"></i>
+                </button>
+              </form>
+            </div>
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endif %}
+
 {% endblock %}

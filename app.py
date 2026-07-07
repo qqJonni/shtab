@@ -95,7 +95,7 @@ def create_app():
 
 
 def register_routes(app):
-    from routes import auth, notifications, dashboards, objects, defects, packages, supply, export, guest, admin, report_page, plans, journal, pwa, smeta, digest
+    from routes import auth, notifications, dashboards, objects, defects, packages, supply, export, guest, admin, report_page, plans, journal, pwa, smeta, digest, id_module
     auth.register(app)
     notifications.register(app)
     dashboards.register(app)
@@ -112,6 +112,7 @@ def register_routes(app):
     pwa.register(app)
     smeta.register(app)
     digest.register(app)
+    id_module.register(app)
 
 
 def init_db():
