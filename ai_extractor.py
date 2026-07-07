@@ -271,6 +271,7 @@ def ocr_pdf_raw(filepath: str) -> dict:
     payload = {
         'mimeType': 'application/pdf',
         'languageCodes': ['ru', 'en'],
+        'model': 'table',
         'content': content_b64,
     }
     data = json.dumps(payload, ensure_ascii=False).encode('utf-8')
@@ -325,6 +326,191 @@ def _get_line_x(line: dict) -> int:
         return min(xs)
     except (KeyError, TypeError, ValueError):
         return 0
+
+
+def _merge_names_with_table(body: dict) -> str:
+    """
+    Соединяет текстовые блоки из левой части страницы (Наименование, Ед.изм)
+    с ячейками детектированной таблицы (числа) по Y-координате.
+    """
+    annotation = (body.get('result') or {}).get('textAnnotation') or {}
+    tables = annotation.get('tables') or []
+    if not tables:
+        return ''
+
+    table = tables[0]
+
+    # Граница таблицы по X — левый край детектированной таблицы
+    try:
+        xs = [int(v.get('x', 0)) for v in table['boundingBox']['vertices']]
+        table_left_x = min(xs)
+    except Exception:
+        table_left_x = 3000
+
+    rows_n = int(table.get('rowCount', 0))
+    cols_n = int(table.get('columnCount', 0))
+    if rows_n < 2:
+        return ''
+
+    # Строим матрицу таблицы + Y-центр каждой строки
+    grid: list[list[str]] = [['' for _ in range(cols_n)] for _ in range(rows_n)]
+    row_y: list[float] = [0.0] * rows_n
+    row_cell_count: list[int] = [0] * rows_n
+
+    for cell in table.get('cells') or []:
+        r = int(cell.get('rowIndex', 0))
+        c = int(cell.get('columnIndex', 0))
+        if r >= rows_n or c >= cols_n:
+            continue
+        grid[r][c] = (cell.get('text') or '').replace('\n', ' ').strip()
+        try:
+            verts = cell['boundingBox']['vertices']
+            ys = [int(v.get('y', 0)) for v in verts]
+            row_y[r] += (min(ys) + max(ys)) / 2
+            row_cell_count[r] += 1
+        except Exception:
+            pass
+
+    for r in range(rows_n):
+        if row_cell_count[r]:
+            row_y[r] /= row_cell_count[r]
+
+    # Собираем текстовые блоки из левой части страницы
+    left_lines: list[dict] = []  # {text, y_center}
+    for block in annotation.get('blocks') or []:
+        try:
+            bverts = block['boundingBox']['vertices']
+            bxs = [int(v.get('x', 0)) for v in bverts]
+            bys = [int(v.get('y', 0)) for v in bverts]
+            if min(bxs) >= table_left_x:
+                continue  # блок в зоне таблицы, пропускаем
+            block_cx = (min(bxs) + max(bxs)) // 2
+            if block_cx >= table_left_x:
+                continue
+        except Exception:
+            continue
+
+        for line in block.get('lines') or []:
+            text = (line.get('text') or '').strip()
+            if not text:
+                continue
+            try:
+                lverts = line['boundingBox']['vertices']
+                lys = [int(v.get('y', 0)) for v in lverts]
+                cy = (min(lys) + max(lys)) / 2
+            except Exception:
+                continue
+            left_lines.append({'text': text, 'y': cy})
+
+    # Определяем колонки числовой части (qty, price, total) в таблице
+    col_qty = col_price = col_total = -1
+    for row in grid[:4]:
+        for ci, cell in enumerate(row):
+            t = cell.lower()
+            if col_qty   == -1 and any(k in t for k in ['объем', 'объём']): col_qty   = ci
+            if col_price == -1 and 'цена' in t:                               col_price = ci
+            if col_total == -1 and any(k in t for k in ['общая', 'стоимость', 'итого']): col_total = ci
+
+    def _get(row, ci):
+        return row[ci] if ci >= 0 and ci < len(row) else ''
+
+    # Для каждой строки таблицы ищем ближайший текстовый блок слева
+    TOLERANCE = 120  # px — допуск по Y для совпадения
+    result_lines = ['Строки сметы (Наименование | Объём | Цена | Итого):', '']
+
+    for r in range(rows_n):
+        qty_v   = _get(grid[r], col_qty)
+        price_v = _get(grid[r], col_price)
+        total_v = _get(grid[r], col_total)
+        if not any([qty_v, price_v, total_v]):
+            continue
+
+        ry = row_y[r]
+        # Ближайший левый блок по Y
+        best = min(left_lines, key=lambda l: abs(l['y'] - ry), default=None)
+        name_v = best['text'] if best and abs(best['y'] - ry) <= TOLERANCE else ''
+
+        result_lines.append(
+            f'Наименование: {name_v} | Объём: {qty_v} | Цена: {price_v} | Итого: {total_v}'
+        )
+
+    return '\n'.join(result_lines)
+
+
+def _format_ocr_table(body: dict) -> str:
+    """
+    Форматирует распознанную OCR-таблицу (model=table) в читаемый текст
+    с явными метками колонок для передачи в GPT.
+    Определяет колонки по заголовкам и возвращает строки вида:
+    «Наименование: X | Ед.: Y | Объём: Z | Цена: W | Итого: V»
+    """
+    annotation = (body.get('result') or {}).get('textAnnotation') or {}
+    tables = annotation.get('tables') or []
+    if not tables:
+        return ''
+
+    table = tables[0]
+    rows_n = int(table.get('rowCount', 0))
+    cols_n = int(table.get('columnCount', 0))
+    if rows_n < 2 or cols_n < 2:
+        return ''
+
+    # Строим матрицу ячеек
+    grid: list[list[str]] = [['' for _ in range(cols_n)] for _ in range(rows_n)]
+    for cell in table.get('cells') or []:
+        r = int(cell.get('rowIndex', 0))
+        c = int(cell.get('columnIndex', 0))
+        if r < rows_n and c < cols_n:
+            grid[r][c] = (cell.get('text') or '').replace('\n', ' ').strip()
+
+    # Определяем индексы колонок по заголовкам (ищем в первых 3 строках)
+    col_name = col_unit = col_qty = col_price = col_total = -1
+    _kw = {
+        'name':  ['наименование', 'работ и затрат', 'вид работ'],
+        'unit':  ['ед.изм', 'ед. изм', 'единица'],
+        'qty':   ['объем', 'объём', 'кол-во', 'количество'],
+        'price': ['цена'],
+        'total': ['общая', 'стоимость', 'итого', 'сумма'],
+    }
+    for row in grid[:4]:
+        for ci, cell in enumerate(row):
+            t = cell.lower()
+            if col_name  == -1 and any(k in t for k in _kw['name']):  col_name  = ci
+            if col_unit  == -1 and any(k in t for k in _kw['unit']):  col_unit  = ci
+            if col_qty   == -1 and any(k in t for k in _kw['qty']):   col_qty   = ci
+            if col_price == -1 and any(k in t for k in _kw['price']): col_price = ci
+            if col_total == -1 and any(k in t for k in _kw['total']): col_total = ci
+
+    def _get(row, ci):
+        return row[ci].strip() if ci >= 0 and ci < len(row) else ''
+
+    # Если ключевые колонки найдены — форматируем с метками
+    if col_name >= 0 and col_total >= 0:
+        lines = [
+            f'Структура таблицы (OCR с детекцией колонок):',
+            f'  col{col_name}=Наименование | col{col_unit}=Ед. | '
+            f'col{col_qty}=Объём | col{col_price}=Цена | col{col_total}=Итого', '',
+        ]
+        for row in grid:
+            nv = _get(row, col_name)
+            uv = _get(row, col_unit)
+            qv = _get(row, col_qty)
+            pv = _get(row, col_price)
+            tv = _get(row, col_total)
+            if not any([nv, qv, pv, tv]):
+                continue
+            lines.append(
+                f'Наименование: {nv} | Ед.: {uv} | Объём: {qv} | Цена: {pv} | Итого: {tv}'
+            )
+        return '\n'.join(lines)
+
+    # Fallback — сырая сетка
+    lines = []
+    for row in grid:
+        row_text = ' | '.join(v for v in row if v)
+        if row_text.strip():
+            lines.append(row_text)
+    return '\n'.join(lines)
 
 
 def _reconstruct_table(body: dict) -> str:
