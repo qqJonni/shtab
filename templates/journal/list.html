@@ -33,8 +33,8 @@
             <th style="width:44px" class="text-center">№</th>
             <th style="width:110px">Дата</th>
             <th>Вид работ</th>
-            <th style="width:180px">Подрядчик</th>
-            <th style="width:100px">Автор</th>
+            <th class="d-none d-sm-table-cell" style="width:180px">Подрядчик</th>
+            <th class="d-none d-md-table-cell" style="width:100px">Автор</th>
             <th style="width:72px"></th>
           </tr>
         </thead>
@@ -52,8 +52,8 @@
                 </div>
               {% endif %}
             </td>
-            <td style="font-size:13px">{{ e.contractor_name or '—' }}</td>
-            <td>
+            <td class="d-none d-sm-table-cell" style="font-size:13px">{{ e.contractor_name or '—' }}</td>
+            <td class="d-none d-md-table-cell">
               <span style="font-size:12px;color:var(--text-secondary)">{{ e.author_name or '—' }}</span>
             </td>
             <td onclick="event.stopPropagation()">
