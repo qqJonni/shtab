@@ -82,9 +82,9 @@
           <tr>
             <th style="width:40px">#</th>
             <th>Замечание</th>
-            <th>Объект / Этап</th>
-            <th>Приоритет</th>
-            <th>Срок</th>
+            <th class="d-none d-sm-table-cell">Объект / Этап</th>
+            <th class="d-none d-md-table-cell">Приоритет</th>
+            <th class="d-none d-md-table-cell">Срок</th>
             <th>Статус</th>
           </tr>
         </thead>
@@ -98,18 +98,18 @@
                 <div class="text-muted" style="font-size:11px">{{ d.reporter_name }}</div>
               {% endif %}
             </td>
-            <td style="font-size:13px">
+            <td class="d-none d-sm-table-cell" style="font-size:13px">
               <div>{{ d.object_name }}</div>
               <div class="text-muted">{{ d.stage_name }}</div>
             </td>
-            <td>
+            <td class="d-none d-md-table-cell">
               {% if d.priority == 'critical' %}<span class="badge badge-overdue">Критический</span>
               {% elif d.priority == 'high' %}<span class="badge badge-rework">Высокий</span>
               {% elif d.priority == 'normal' %}<span class="badge badge-progress">Обычный</span>
               {% else %}<span class="badge badge-pending">Низкий</span>
               {% endif %}
             </td>
-            <td style="font-size:13px;white-space:nowrap">
+            <td class="d-none d-md-table-cell" style="font-size:13px;white-space:nowrap">
               {% if d.due_date %}
                 <span {% if d.due_date < now_date and d.status not in ('closed', 'verified') %}style="color:var(--danger);font-weight:600"{% endif %}>{{ d.due_date }}</span>
               {% else %}—{% endif %}

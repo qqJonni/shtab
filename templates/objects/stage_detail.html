@@ -203,7 +203,7 @@
   <div class="card-body p-4">
     <form method="post" action="{{ url_for('stage_doc_upload', stage_id=stage.id) }}" enctype="multipart/form-data">
       <div class="row g-3 align-items-end">
-        <div class="col-sm-3">
+        <div class="col-6 col-sm-3">
           <label class="form-label">Тип документа</label>
           <select name="doc_type" class="form-select">
             {% for key, label in doc_type_labels.items() %}
@@ -211,16 +211,16 @@
             {% endfor %}
           </select>
         </div>
-        <div class="col-sm-3">
+        <div class="col-6 col-sm-3">
           <label class="form-label">Название</label>
           <input type="text" name="title" class="form-control" placeholder="Необязательно">
         </div>
-        <div class="col-sm-4">
+        <div class="col-12 col-sm-6">
           <label class="form-label">Файл</label>
-          <input type="file" name="file" class="form-control" accept=".pdf,.doc,.docx,.xls,.xlsx,.jpg,.jpeg,.png,.zip,.rar" required>
-        </div>
-        <div class="col-sm-2">
-          <button type="submit" class="btn btn-primary w-100"><i class="bi bi-upload me-1"></i>Загрузить</button>
+          <div class="d-flex gap-2">
+            <input type="file" name="file" class="form-control" accept=".pdf,.doc,.docx,.xls,.xlsx,.jpg,.jpeg,.png,.zip,.rar" required>
+            <button type="submit" class="btn btn-primary flex-shrink-0"><i class="bi bi-upload me-1"></i>Загрузить</button>
+          </div>
         </div>
       </div>
     </form>

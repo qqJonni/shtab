@@ -169,7 +169,7 @@
       <div class="fw-medium mb-2" style="font-size:13px">Просроченные подэтапы</div>
       <div class="d-flex flex-column gap-1">
         {% for s in d.overdue_subs %}
-        <div class="d-flex align-items-center justify-content-between p-2 rounded"
+        <div class="d-flex align-items-start justify-content-between flex-wrap p-2 rounded gap-1"
              style="background:#FEF2F2;font-size:13px">
           <div>
             <a href="{{ url_for('stage_detail', stage_id=s.stage_id) }}"
@@ -192,7 +192,7 @@
       <div class="fw-medium mb-2" style="font-size:13px">Просроченные этапы</div>
       <div class="d-flex flex-column gap-1">
         {% for s in d.overdue_stages %}
-        <div class="d-flex align-items-center justify-content-between p-2 rounded"
+        <div class="d-flex align-items-start justify-content-between flex-wrap p-2 rounded gap-1"
              style="background:#FEF2F2;font-size:13px">
           <a href="{{ url_for('stage_detail', stage_id=s.id) }}"
              class="fw-medium text-decoration-none" style="color:var(--danger)">{{ s.name }}</a>
@@ -209,7 +209,7 @@
       <div class="fw-medium mb-2" style="font-size:13px">Пакеты КС зависли на согласовании</div>
       <div class="d-flex flex-column gap-1">
         {% for p in d.stalled_pkgs %}
-        <div class="d-flex align-items-center justify-content-between p-2 rounded"
+        <div class="d-flex align-items-start justify-content-between flex-wrap p-2 rounded gap-1"
              style="background:#FFFBEB;font-size:13px">
           <div>
             <a href="{{ url_for('package_detail', package_id=p.id) }}"
@@ -231,7 +231,7 @@
       <div class="fw-medium mb-2" style="font-size:13px">Пакеты КС возвращены подрядчику</div>
       <div class="d-flex flex-column gap-1">
         {% for p in d.returned_pkgs %}
-        <div class="d-flex align-items-center justify-content-between p-2 rounded"
+        <div class="d-flex align-items-start justify-content-between flex-wrap p-2 rounded gap-1"
              style="background:#FEF2F2;font-size:13px">
           <a href="{{ url_for('package_detail', package_id=p.id) }}"
              class="fw-medium text-decoration-none" style="color:var(--danger)">{{ p.substage_name }}</a>
@@ -255,7 +255,7 @@
     {% if d.period_done_subs %}
     <div class="d-flex flex-column gap-1">
       {% for s in d.period_done_subs %}
-      <div class="d-flex align-items-center justify-content-between p-2 rounded"
+      <div class="d-flex align-items-start justify-content-between flex-wrap p-2 rounded gap-1"
            style="background:#F0FDF4;font-size:13px">
         <div>
           <a href="{{ url_for('stage_detail', stage_id=s.stage_id) }}"
@@ -306,7 +306,7 @@
     <div class="d-flex flex-column gap-2">
       {% for defect in d.top_defects %}
       <a href="{{ url_for('defect_detail', defect_id=defect.id) }}" class="text-decoration-none">
-        <div class="d-flex align-items-center justify-content-between p-2 rounded"
+        <div class="d-flex align-items-start justify-content-between flex-wrap p-2 rounded gap-1"
              style="background:{% if defect.overdue %}#FEF2F2{% else %}#F8FAFC{% endif %};transition:background .15s"
              onmouseover="this.style.background='#F1F5F9'" onmouseout="this.style.background='{% if defect.overdue %}#FEF2F2{% else %}#F8FAFC{% endif %}'">
           <div class="d-flex align-items-center gap-2">

@@ -2,14 +2,14 @@
 {% block title %}{{ obj.name }} — ШТАБ{% endblock %}
 {% block topbar_title %}{{ obj.name }}{% endblock %}
 {% block content %}
-<div class="d-flex justify-content-between align-items-center mb-3">
+<div class="d-flex flex-column flex-sm-row justify-content-between align-items-start align-items-sm-center mb-3 gap-2">
   <div>
     <h4 class="fw-bold mb-1">{{ obj.name }}</h4>
     {% if obj.address %}
       <p class="text-muted mb-0" style="font-size:13px"><i class="bi bi-geo-alt me-1"></i>{{ obj.address }}</p>
     {% endif %}
   </div>
-  <div class="d-flex gap-2">
+  <div class="d-flex gap-2 flex-shrink-0 flex-wrap">
     {% if current_user.role in ('manager', 'admin') %}
       <a href="{{ url_for('object_edit', obj_id=obj.id) }}" class="btn btn-sm btn-outline-primary"><i class="bi bi-pencil me-1"></i>Редактировать</a>
       <form method="post" action="{{ url_for('object_archive', obj_id=obj.id) }}" class="d-inline">

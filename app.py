@@ -54,6 +54,7 @@ def create_app():
     app = Flask(__name__)
     app.config['SECRET_KEY'] = config.SECRET_KEY
     app.config['MAX_CONTENT_LENGTH'] = config.MAX_CONTENT_LENGTH
+    app.config['TEMPLATES_AUTO_RELOAD'] = True
 
     login_manager.init_app(app)
     app.teardown_appcontext(close_connection)

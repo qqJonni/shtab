@@ -269,6 +269,10 @@ a:hover { color: #2563EB; }
   font-weight: 600;
   color: var(--text-main);
   flex: 1;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .crm-topbar-right {
