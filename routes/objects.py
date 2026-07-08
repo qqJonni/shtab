@@ -232,6 +232,15 @@ def register(app):
             s['sub_done'] = sum(1 for sub in subs if sub['status'] in ('done', 'closed', 'approved'))
             total_subs += s['sub_total']
             total_done += s['sub_done']
+            # ИД-готовность для карточки этапа
+            id_items = query_db(
+                'SELECT ci.id, ci.title, ci.is_required, '
+                '(SELECT COUNT(*) FROM id_documents WHERE item_id = ci.id) as file_count '
+                'FROM id_checklist_items ci WHERE ci.stage_id = ?', (s['id'],))
+            s['id_total'] = len(id_items)
+            s['id_req_total'] = sum(1 for i in id_items if i['is_required'])
+            s['id_req_done'] = sum(1 for i in id_items if i['is_required'] and i['file_count'] > 0)
+            s['id_missing'] = [i['title'] for i in id_items if i['is_required'] and i['file_count'] == 0]
         progress = round(total_done / total_subs * 100) if total_subs > 0 else 0
 
         defects_open = query_db(
@@ -438,6 +447,28 @@ def register(app):
             except (ValueError, TypeError):
                 order_num = stage['order_num']
 
+            # ── Гейт закрытия этапа ──────────────────────────────────────────
+            if status == 'done' and stage['status'] != 'done':
+                subs = query_db(
+                    'SELECT status FROM substages WHERE stage_id = ?', (stage_id,))
+                not_done = [s for s in subs if s['status'] not in ('done', 'closed', 'approved')]
+                id_pkg = query_db(
+                    "SELECT status FROM id_packages WHERE stage_id = ? ORDER BY id DESC LIMIT 1",
+                    (stage_id,), one=True)
+                has_id_items = query_db(
+                    'SELECT COUNT(*) as c FROM id_checklist_items WHERE stage_id = ?',
+                    (stage_id,), one=True)['c'] > 0
+                id_not_accepted = has_id_items and (not id_pkg or id_pkg['status'] != 'accepted')
+
+                reasons = []
+                if not_done:
+                    reasons.append(f'не завершены подэтапы ({len(not_done)} шт.)')
+                if id_not_accepted:
+                    reasons.append('пакет ИД не принят')
+                if reasons:
+                    flash(f'Нельзя закрыть этап: {"; ".join(reasons)}.', 'danger')
+                    return render_template('objects/stage_form.html', obj=obj, stage=stage, next_order=None)
+
             execute_db(
                 'UPDATE construction_stages SET name=?, description=?, order_num=?, '
                 'plan_start_date=?, plan_end_date=?, status=? WHERE id=?',
@@ -598,10 +629,57 @@ def register(app):
         substages = query_db(
             'SELECT * FROM substages WHERE stage_id = ? ORDER BY id', (stage_id,))
         total_sum = sum(s['total_price'] or 0 for s in substages)
+
+        # ИД: состав чеклиста + файлы к каждому пункту
+        id_items = query_db(
+            'SELECT ci.*, t.name as type_name, '
+            '(SELECT COUNT(*) FROM id_documents WHERE item_id = ci.id) as file_count '
+            'FROM id_checklist_items ci '
+            'LEFT JOIN id_item_types t ON ci.type_id = t.id '
+            'WHERE ci.stage_id = ? ORDER BY ci.order_num, ci.id',
+            (stage_id,))
+        id_item_types = query_db('SELECT * FROM id_item_types ORDER BY order_num')
+        id_files_by_item = {}
+        for item in id_items:
+            id_files_by_item[item['id']] = query_db(
+                'SELECT idf.*, u.full_name as uploader_name '
+                'FROM id_documents idf LEFT JOIN users u ON idf.uploaded_by = u.id '
+                'WHERE idf.item_id = ? ORDER BY idf.uploaded_at',
+                (item['id'],))
+        id_required_total = sum(1 for i in id_items if i['is_required'])
+        id_required_done = sum(1 for i in id_items if i['is_required'] and i['file_count'] > 0)
+        id_missing = [i['title'] for i in id_items if i['is_required'] and i['file_count'] == 0]
+        # Активный пакет ИД на этом этапе
+        id_package = query_db(
+            "SELECT * FROM id_packages WHERE stage_id = ? ORDER BY id DESC LIMIT 1",
+            (stage_id,), one=True)
+
+        # Индикатор готовности к закрытию этапа
+        close_blockers = []
+        if stage['status'] != 'done':
+            not_done_subs = [s for s in substages if s['status'] not in ('done', 'closed', 'approved')]
+            if not_done_subs:
+                close_blockers.append(f'не завершены подэтапы ({len(not_done_subs)} шт.)')
+            if id_items:
+                id_not_accepted = not id_package or id_package['status'] != 'accepted'
+                if id_not_accepted:
+                    close_blockers.append('пакет ИД не принят')
+
         return render_template('objects/stage_detail.html',
                                stage=stage, docs=docs, doc_type_labels=DOC_TYPE_LABELS,
                                can_upload=_can_upload_doc(stage),
-                               substages=substages, total_sum=total_sum)
+                               substages=substages, total_sum=total_sum,
+                               id_items=id_items, id_item_types=id_item_types,
+                               id_files_by_item=id_files_by_item,
+                               id_required_total=id_required_total,
+                               id_required_done=id_required_done,
+                               id_missing=id_missing,
+                               id_package=id_package,
+                               close_blockers=close_blockers,
+                               can_edit_id=current_user.role in ('manager','pto','inspector','admin'),
+                               can_upload_id=current_user.role in ('manager','pto','admin') or (
+                                   current_user.role in ('contractor','foreman') and
+                                   stage['contractor_id'] == current_user.organization_id))
 
     @app.route('/stages/<int:stage_id>/docs/upload', methods=['POST'])
     @login_required

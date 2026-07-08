@@ -1,0 +1,166 @@
+{% extends "base.html" %}
+{% block title %}Пакет ИД — {{ pkg.stage_name }} — ШТАБ{% endblock %}
+{% block topbar_title %}Пакет ИД — {{ pkg.stage_name }}{% endblock %}
+{% block content %}
+
+<div class="mb-3">
+  <a href="{{ url_for('stage_detail', stage_id=pkg.stage_id) }}" class="text-decoration-none" style="font-size:13px">
+    <i class="bi bi-arrow-left me-1"></i>{{ pkg.stage_name }}
+  </a>
+</div>
+
+{# ── Заголовок ── #}
+<div class="d-flex justify-content-between align-items-start mb-4">
+  <div>
+    <h4 class="fw-bold mb-1">Пакет исполнительной документации</h4>
+    <div class="text-muted" style="font-size:13px">
+      {{ pkg.object_name }} → {{ pkg.stage_name }}
+      {% if pkg.contractor_name %} · {{ pkg.contractor_name }}{% endif %}
+    </div>
+  </div>
+  <div>
+    {% if pkg.status == 'in_review' %}<span class="badge badge-progress">На приёмке</span>
+    {% elif pkg.status == 'returned' %}<span class="badge badge-rework">Возвращён</span>
+    {% elif pkg.status == 'accepted' %}<span class="badge badge-done">Принят</span>
+    {% else %}<span class="badge badge-pending">Черновик</span>{% endif %}
+  </div>
+</div>
+
+{# ── Алерт для contractor при возврате ── #}
+{% if pkg.status == 'returned' and is_contractor %}
+<div class="alert mb-4 py-3 px-3" style="background:#FEF3C7;border:1px solid #F59E0B;border-radius:12px">
+  <div class="fw-medium mb-2" style="color:#92400E">Пакет возвращён — исправьте и отправьте повторно</div>
+  {% for s in steps %}
+    {% if s.status == 'returned' and s.comment %}
+      <div style="font-size:13px;color:#78350F">
+        <span class="fw-medium">{{ chain_labels.get(s.role, s.role) }}:</span> {{ s.comment }}
+      </div>
+    {% endif %}
+  {% endfor %}
+  <form method="post" action="{{ url_for('id_package_resubmit', pkg_id=pkg.id) }}" class="mt-3">
+    <button class="btn btn-warning" style="border-radius:8px">
+      <i class="bi bi-send me-1"></i>Отправить повторно
+    </button>
+  </form>
+</div>
+{% endif %}
+
+{# ── Действия согласующего ── #}
+{% if my_step and pkg.status == 'in_review' %}
+<div class="card mb-4" style="border:1px solid var(--primary)">
+  <div class="card-body p-4">
+    <div class="fw-medium mb-3" style="font-size:15px">
+      <i class="bi bi-hand-index me-2" style="color:var(--primary)"></i>Ваша очередь — примите решение
+    </div>
+    <div class="row g-3">
+      <div class="col-md-6">
+        <form method="post" action="{{ url_for('id_package_approve', pkg_id=pkg.id) }}">
+          <div class="mb-2">
+            <input type="text" name="comment" class="form-control" style="height:44px;border-radius:8px;font-size:14px"
+                   placeholder="Комментарий (необязательно)">
+          </div>
+          <button class="btn btn-success w-100" style="height:44px;border-radius:8px">
+            <i class="bi bi-check-lg me-1"></i>Принять
+          </button>
+        </form>
+      </div>
+      <div class="col-md-6">
+        <form method="post" action="{{ url_for('id_package_return', pkg_id=pkg.id) }}">
+          <div class="mb-2">
+            <input type="text" name="comment" required class="form-control"
+                   style="height:44px;border-radius:8px;font-size:14px"
+                   placeholder="Причина возврата (обязательно)">
+          </div>
+          <button class="btn btn-danger w-100" style="height:44px;border-radius:8px">
+            <i class="bi bi-arrow-return-left me-1"></i>Вернуть подрядчику
+          </button>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+{% endif %}
+
+<div class="row g-4">
+
+  {# ── Цепочка согласования ── #}
+  <div class="col-md-5">
+    <div class="card h-100">
+      <div class="card-body p-4">
+        <div class="fw-medium mb-3" style="font-size:14px">Цепочка приёмки</div>
+        {% for step in steps %}
+        {% set role_label = chain_labels.get(step.role, step.role) %}
+        <div class="d-flex align-items-start gap-3 mb-3">
+          <div style="width:32px;height:32px;border-radius:50%;flex-shrink:0;display:flex;align-items:center;justify-content:center;
+            background:{% if step.status == 'approved' %}rgba(16,185,129,.12){% elif step.status == 'returned' %}rgba(239,68,68,.12){% elif step.status == 'pending' %}rgba(59,130,246,.12){% else %}#F1F5F9{% endif %}">
+            {% if step.status == 'approved' %}<i class="bi bi-check" style="color:var(--success)"></i>
+            {% elif step.status == 'returned' %}<i class="bi bi-x" style="color:var(--danger)"></i>
+            {% elif step.status == 'pending' %}<i class="bi bi-hourglass-split" style="color:var(--primary)"></i>
+            {% else %}<i class="bi bi-clock" style="color:#94A3B8"></i>{% endif %}
+          </div>
+          <div>
+            <div class="fw-medium" style="font-size:13px">{{ role_label }}</div>
+            {% if step.approver_name %}
+              <div class="text-muted" style="font-size:12px">{{ step.approver_name }}</div>
+            {% endif %}
+            {% if step.status == 'approved' %}
+              <span class="badge badge-done" style="font-size:11px">Принято</span>
+              {% if step.acted_at %}<span class="text-muted ms-1" style="font-size:11px">{{ step.acted_at[:10] }}</span>{% endif %}
+            {% elif step.status == 'returned' %}
+              <span class="badge badge-rework" style="font-size:11px">Возврат</span>
+              {% if step.comment %}<div class="mt-1" style="font-size:12px;color:var(--danger)">{{ step.comment }}</div>{% endif %}
+            {% elif step.status == 'pending' %}
+              <span class="badge badge-progress" style="font-size:11px">Ожидает</span>
+            {% else %}
+              <span class="badge badge-pending" style="font-size:11px">В очереди</span>
+            {% endif %}
+          </div>
+        </div>
+        {% if not loop.last %}
+        <div style="width:1px;height:12px;background:#E2E8F0;margin-left:15px;margin-bottom:3px"></div>
+        {% endif %}
+        {% endfor %}
+        {% if pkg.status == 'accepted' %}
+        <div class="mt-2 d-flex align-items-center gap-2" style="color:var(--success)">
+          <i class="bi bi-patch-check-fill"></i>
+          <span class="fw-medium" style="font-size:13px">Пакет принят{% if pkg.accepted_at %} {{ pkg.accepted_at[:10] }}{% endif %}</span>
+        </div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
+  {# ── Состав ИД ── #}
+  <div class="col-md-7">
+    <div class="card h-100">
+      <div class="card-body p-4">
+        <div class="fw-medium mb-3" style="font-size:14px">Состав исполнительной документации</div>
+        {% if not id_items %}
+          <p class="text-muted" style="font-size:13px">Пункты ИД не заданы.</p>
+        {% else %}
+          {% for item in id_items %}
+          <div class="d-flex align-items-start gap-2 mb-2">
+            {% if item.file_count > 0 %}
+              <i class="bi bi-check-circle-fill mt-1" style="color:var(--success);font-size:14px;flex-shrink:0"></i>
+            {% elif item.is_required %}
+              <i class="bi bi-circle mt-1" style="color:var(--warning);font-size:14px;flex-shrink:0"></i>
+            {% else %}
+              <i class="bi bi-circle mt-1" style="color:#CBD5E1;font-size:14px;flex-shrink:0"></i>
+            {% endif %}
+            <div>
+              <span style="font-size:13px">{{ item.title }}</span>
+              {% if not item.is_required %}
+                <span class="text-muted" style="font-size:11px"> (необязательный)</span>
+              {% endif %}
+              <span class="text-muted ms-1" style="font-size:11px">· {{ item.file_count }} файл(ов)</span>
+            </div>
+          </div>
+          {% endfor %}
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
+</div>
+
+{% endblock %}
