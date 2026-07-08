@@ -5,7 +5,7 @@ from flask_login import login_required, current_user
 
 import config
 from db import query_db, execute_db, get_db, notify
-from helpers import role_required, save_package_document
+from helpers import role_required, assert_object_access, save_package_document
 
 DOC_TYPE_LABELS = {
     'ks2': 'КС-2',
@@ -86,6 +86,7 @@ def register(app):
         pkg = _get_package_full(package_id)
         if not pkg or not _can_view_package(pkg):
             abort(403)
+        assert_object_access(current_user, pkg['object_id'])
 
         docs = query_db(
             'SELECT * FROM package_documents WHERE package_id = ? ORDER BY created_at', (package_id,))

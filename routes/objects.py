@@ -4,7 +4,8 @@ from flask_login import login_required, current_user
 
 import config
 from db import query_db, execute_db, get_db, notify
-from helpers import role_required, save_stage_document, save_substage_photo, save_plan_file
+from helpers import role_required, accessible_object_ids, assert_object_access, \
+    save_stage_document, save_substage_photo, save_plan_file
 
 VIEWERS = ('manager', 'admin', 'pto', 'inspector', 'foreman')
 EDITORS = ('manager', 'admin')
@@ -175,12 +176,16 @@ def register(app):
     @role_required(*VIEWERS)
     def objects_list():
         status = request.args.get('status', 'active')
-        objects = query_db(
-            'SELECT o.*, u.full_name as creator_name '
-            'FROM objects o LEFT JOIN users u ON o.created_by = u.id '
-            'WHERE o.status = ? ORDER BY o.created_at DESC',
-            (status,),
-        )
+        ids = accessible_object_ids(current_user)
+        if not ids:
+            objects = []
+        else:
+            objects = query_db(
+                'SELECT o.*, u.full_name as creator_name '
+                'FROM objects o LEFT JOIN users u ON o.created_by = u.id '
+                'WHERE o.status = ? AND o.id = ANY(?) ORDER BY o.created_at DESC',
+                (status, ids),
+            )
         return render_template('objects/list.html', objects=objects, status=status)
 
     @app.route('/objects/add', methods=['GET', 'POST'])
@@ -199,10 +204,11 @@ def register(app):
                 flash('Введите название объекта.', 'danger')
                 return render_template('objects/form.html', obj=None)
 
+            developer_id = current_user.organization_id if current_user.role in ('manager', 'pto', 'inspector', 'foreman', 'supply', 'accountant') else None
             execute_db(
-                'INSERT INTO objects (name, address, type, construction_name, construction_address, cadastral_number, created_by) '
-                'VALUES (?, ?, ?, ?, ?, ?, ?)',
-                (name, address, obj_type, construction_name, construction_address, cadastral_number, current_user.id),
+                'INSERT INTO objects (name, address, type, construction_name, construction_address, cadastral_number, created_by, developer_id) '
+                'VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+                (name, address, obj_type, construction_name, construction_address, cadastral_number, current_user.id, developer_id),
             )
             flash('Объект создан.', 'success')
             return redirect(url_for('objects_list'))
@@ -216,6 +222,7 @@ def register(app):
         obj = query_db('SELECT o.*, u.full_name as creator_name FROM objects o LEFT JOIN users u ON o.created_by = u.id WHERE o.id = ?', (obj_id,), one=True)
         if not obj:
             abort(404)
+        assert_object_access(current_user, obj_id)
         stages = query_db(
             'SELECT cs.*, org.name as contractor_name '
             'FROM construction_stages cs '
@@ -276,6 +283,7 @@ def register(app):
         obj = query_db('SELECT * FROM objects WHERE id = ?', (obj_id,), one=True)
         if not obj:
             abort(404)
+        assert_object_access(current_user, obj_id)
 
         if request.method == 'POST':
             name = request.form.get('name', '').strip()
@@ -305,6 +313,7 @@ def register(app):
         obj = query_db('SELECT * FROM objects WHERE id = ?', (obj_id,), one=True)
         if not obj:
             abort(404)
+        assert_object_access(current_user, obj_id)
         new_status = 'active' if obj['status'] == 'archived' else 'archived'
         execute_db('UPDATE objects SET status = ? WHERE id = ?', (new_status, obj_id))
         label = 'восстановлен' if new_status == 'active' else 'архивирован'
@@ -318,6 +327,7 @@ def register(app):
         obj = query_db('SELECT * FROM objects WHERE id = ?', (obj_id,), one=True)
         if not obj:
             abort(404)
+        assert_object_access(current_user, obj_id)
         db = get_db()
         db.execute('DELETE FROM objects WHERE id = ?', (obj_id,))
         db.commit()
@@ -335,6 +345,7 @@ def register(app):
         obj = query_db('SELECT id FROM objects WHERE id = ?', (obj_id,), one=True)
         if not obj:
             abort(404)
+        assert_object_access(current_user, obj_id)
         file = request.files.get('file')
         title = request.form.get('title', '').strip()
         level_label = request.form.get('level_label', '').strip()
@@ -368,6 +379,7 @@ def register(app):
         plan = query_db('SELECT * FROM object_plans WHERE id=? AND object_id=?', (plan_id, obj_id), one=True)
         if not plan:
             abort(404)
+        assert_object_access(current_user, obj_id)
         filepath = os.path.join(config.PLANS_FOLDER, str(obj_id), plan['filename'])
         if os.path.exists(filepath):
             os.remove(filepath)

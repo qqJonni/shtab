@@ -5,6 +5,7 @@ from openpyxl import Workbook
 from openpyxl.styles import Font, Alignment, Border, Side, PatternFill
 
 from db import query_db
+from flask_login import current_user
 from helpers import role_required
 from reports import objects_summary
 
@@ -46,7 +47,8 @@ def register(app):
         for cw, w in [(1,25),(2,25),(3,12),(4,8),(5,10),(6,10),(7,14),(8,12),(9,20)]:
             ws.column_dimensions[chr(64+cw)].width = w
 
-        objs = objects_summary()
+        dev_id = current_user.organization_id if current_user.role != 'admin' else None
+        objs = objects_summary(dev_id)
         for row_i, o in enumerate(objs, 4):
             vals = [o['name'], o.get('address',''), o['progress'],
                     o['stages_count'], o['substages_total'], o['substages_done'],
@@ -65,12 +67,13 @@ def register(app):
         for cw, w in [(1,20),(2,20),(3,18),(4,14),(5,25),(6,10),(7,8),(8,12),(9,14),(10,12),(11,12)]:
             ws2.column_dimensions[chr(64+cw)].width = w
 
+        tenant_where = f' AND o.developer_id = {current_user.organization_id}' if (current_user.role != 'admin' and current_user.organization_id) else ''
         stages = query_db(
-            'SELECT cs.*, o.name as obj_name, org.name as contractor_name '
-            'FROM construction_stages cs '
-            'JOIN objects o ON cs.object_id=o.id '
-            'LEFT JOIN organizations org ON cs.contractor_id=org.id '
-            'ORDER BY o.name, cs.order_num')
+            f'SELECT cs.*, o.name as obj_name, org.name as contractor_name '
+            f'FROM construction_stages cs '
+            f'JOIN objects o ON cs.object_id=o.id '
+            f'LEFT JOIN organizations org ON cs.contractor_id=org.id '
+            f'WHERE 1=1{tenant_where} ORDER BY o.name, cs.order_num')
         status_map = {'planned':'Планируется','in_progress':'В работе','done':'Завершён','suspended':'Приостановлен',
                       'not_started':'Не начат','closed':'Закрыт','approved':'Согласован'}
         r = 4

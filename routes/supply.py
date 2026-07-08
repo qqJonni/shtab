@@ -3,7 +3,7 @@ from flask_login import login_required, current_user
 
 import config
 from db import query_db, execute_db, get_db, notify
-from helpers import role_required
+from helpers import role_required, assert_object_access
 
 STATUS_LABELS = {
     'submitted': 'Отправлена',
@@ -75,6 +75,11 @@ def register(app):
                     "WHERE mr.contractor_id = ? AND mr.status != 'completed' ORDER BY mr.created_at DESC",
                     (current_user.organization_id,))
         elif current_user.role in VIEWERS:
+            tenant_sql = ''
+            tenant_args = []
+            if current_user.role != 'admin' and current_user.organization_id:
+                tenant_sql = ' AND o.developer_id = ?'
+                tenant_args = [current_user.organization_id]
             if tab == 'archive':
                 reqs = query_db(
                     'SELECT mr.*, cs.name as stage_name, o.name as object_name, '
@@ -83,7 +88,8 @@ def register(app):
                     'JOIN construction_stages cs ON mr.stage_id = cs.id '
                     'JOIN objects o ON cs.object_id = o.id '
                     'LEFT JOIN organizations org ON mr.contractor_id = org.id '
-                    "WHERE mr.status = 'completed' ORDER BY mr.completed_at DESC")
+                    f"WHERE mr.status = 'completed'{tenant_sql} ORDER BY mr.completed_at DESC",
+                    tenant_args)
             else:
                 reqs = query_db(
                     'SELECT mr.*, cs.name as stage_name, o.name as object_name, '
@@ -92,7 +98,8 @@ def register(app):
                     'JOIN construction_stages cs ON mr.stage_id = cs.id '
                     'JOIN objects o ON cs.object_id = o.id '
                     'LEFT JOIN organizations org ON mr.contractor_id = org.id '
-                    "WHERE mr.status != 'completed' ORDER BY mr.created_at DESC")
+                    f"WHERE mr.status != 'completed'{tenant_sql} ORDER BY mr.created_at DESC",
+                    tenant_args)
         else:
             abort(403)
 
@@ -206,6 +213,7 @@ def register(app):
         mr = _get_request_full(req_id)
         if not mr or not _can_view(mr):
             abort(403)
+        assert_object_access(current_user, mr['object_id'])
 
         items = query_db('SELECT * FROM material_request_items WHERE request_id = ? ORDER BY id', (req_id,))
         history = query_db(

@@ -62,32 +62,48 @@ ROLE_SECTIONS = {
 }
 
 
-def _package_counts(role=None):
+def _tenant_obj_filter(user):
+    """Returns (extra_join, extra_where, args) fragments for scoping by tenant."""
+    if user.role == 'admin':
+        return '', '', []
+    if user.role == 'contractor':
+        return '', '', []  # contractor dashboard already uses org_id filter
+    if user.organization_id:
+        return '', ' AND o.developer_id = ?', [user.organization_id]
+    return '', ' AND 1=0', []
+
+
+def _package_counts(role=None, user=None):
     from db import query_db
+    from flask_login import current_user as cu
+    u = user or cu
+
+    tenant_where = ''
+    tenant_args = []
+    if u.role != 'admin' and u.role != 'contractor' and u.organization_id:
+        tenant_where = (
+            ' AND dp.substage_id IN ('
+            '  SELECT ss.id FROM substages ss'
+            '  JOIN construction_stages cs ON ss.stage_id = cs.id'
+            '  JOIN objects o ON cs.object_id = o.id'
+            '  WHERE o.developer_id = ?)'
+        )
+        tenant_args = [u.organization_id]
+
     if role:
         pending = query_db(
-            "SELECT COUNT(*) as c FROM approval_steps WHERE role = ? AND status = 'pending'",
-            (role,), one=True)['c']
+            f"SELECT COUNT(*) as c FROM approval_steps a "
+            f"JOIN doc_packages dp ON a.package_id = dp.id "
+            f"WHERE a.role = ? AND a.status = 'pending'{tenant_where}",
+            [role] + tenant_args, one=True)['c']
     else:
         pending = 0
     return {
         'pending': pending,
-        'total': query_db("SELECT COUNT(*) as c FROM doc_packages", one=True)['c'],
-        'in_review': query_db("SELECT COUNT(*) as c FROM doc_packages WHERE status='in_review'", one=True)['c'],
-        'returned': query_db("SELECT COUNT(*) as c FROM doc_packages WHERE status='returned'", one=True)['c'],
-        'completed': query_db("SELECT COUNT(*) as c FROM doc_packages WHERE status='completed'", one=True)['c'],
-    }
-
-
-def _defect_counts_all():
-    from db import query_db
-    return {
-        'total': query_db("SELECT COUNT(*) as c FROM defects", one=True)['c'],
-        'open': query_db("SELECT COUNT(*) as c FROM defects WHERE status='open'", one=True)['c'],
-        'in_progress': query_db("SELECT COUNT(*) as c FROM defects WHERE status='in_progress'", one=True)['c'],
-        'resolved': query_db("SELECT COUNT(*) as c FROM defects WHERE status='resolved'", one=True)['c'],
-        'closed': query_db("SELECT COUNT(*) as c FROM defects WHERE status IN ('closed','verified')", one=True)['c'],
-        'overdue': query_db("SELECT COUNT(*) as c FROM defects WHERE due_date < to_char(now(),'YYYY-MM-DD') AND status NOT IN ('closed','verified')", one=True)['c'],
+        'total': query_db(f"SELECT COUNT(*) as c FROM doc_packages dp WHERE 1=1{tenant_where}", tenant_args, one=True)['c'],
+        'in_review': query_db(f"SELECT COUNT(*) as c FROM doc_packages dp WHERE status='in_review'{tenant_where}", tenant_args, one=True)['c'],
+        'returned': query_db(f"SELECT COUNT(*) as c FROM doc_packages dp WHERE status='returned'{tenant_where}", tenant_args, one=True)['c'],
+        'completed': query_db(f"SELECT COUNT(*) as c FROM doc_packages dp WHERE status='completed'{tenant_where}", tenant_args, one=True)['c'],
     }
 
 
@@ -125,13 +141,14 @@ def register(app):
             abort(403)
         from reports import summary_cards, chart_substage_statuses, chart_schedule_health, \
             chart_defects_priority, chart_packages_pipeline, objects_summary
-        sc = summary_cards()
-        cs = chart_substage_statuses()
-        sh = chart_schedule_health()
-        dp = chart_defects_priority()
-        pp = chart_packages_pipeline()
-        objs = objects_summary()
-        pc = _package_counts('manager')
+        dev_id = current_user.organization_id if current_user.role == 'manager' else None
+        sc = summary_cards(dev_id)
+        cs = chart_substage_statuses(dev_id)
+        sh = chart_schedule_health(dev_id)
+        dp = chart_defects_priority(dev_id)
+        pp = chart_packages_pipeline(dev_id)
+        objs = objects_summary(dev_id)
+        pc = _package_counts('manager', current_user)
         import config
         return render_template('dashboards/manager.html',
                                role_label=config.ROLES.get('manager'),
@@ -143,10 +160,12 @@ def register(app):
         if current_user.role != 'pto' and current_user.role != 'admin':
             abort(403)
         from db import query_db
+        _tj, _tw, _ta = _tenant_obj_filter(current_user)
         stages = query_db(
             'SELECT cs.id, cs.name, cs.status, o.name as object_name, o.id as object_id '
             'FROM construction_stages cs JOIN objects o ON cs.object_id = o.id '
-            "WHERE o.status = 'active' ORDER BY o.name, cs.order_num"
+            f"WHERE o.status = 'active'{_tw} ORDER BY o.name, cs.order_num",
+            _ta,
         )
         stages_list = [dict(s) for s in stages]
         stages_no_subs = 0
@@ -172,8 +191,13 @@ def register(app):
             substages_done += s['sub_done']
             substages_not_started += s['sub_not_started']
             substages_overdue += s['sub_overdue']
-        pc = _package_counts('pto')
-        mr_pending = query_db("SELECT COUNT(*) as c FROM material_requests WHERE status='submitted' AND route_role='pto'", one=True)['c']
+        pc = _package_counts('pto', current_user)
+        mr_pending = query_db(
+            "SELECT COUNT(*) as c FROM material_requests mr "
+            "JOIN construction_stages cs2 ON mr.stage_id = cs2.id "
+            "JOIN objects o ON cs2.object_id = o.id "
+            f"WHERE mr.status='submitted' AND mr.route_role='pto'{_tw}",
+            _ta, one=True)['c']
         import config
         return render_template('dashboards/pto.html',
                                stages=stages_list, stages_no_subs=stages_no_subs,
@@ -191,14 +215,19 @@ def register(app):
         if current_user.role != 'inspector' and current_user.role != 'admin':
             abort(403)
         from db import query_db
-        open_cnt = query_db("SELECT COUNT(*) as c FROM defects WHERE status='open'", one=True)['c']
-        resolved_cnt = query_db("SELECT COUNT(*) as c FROM defects WHERE status='resolved'", one=True)['c']
-        my_created = query_db("SELECT COUNT(*) as c FROM defects WHERE reporter_id=?",
-                              (current_user.id,), one=True)['c']
+        _tj, _tw, _ta = _tenant_obj_filter(current_user)
+        _dq = (
+            "FROM defects d JOIN objects o ON d.object_id = o.id WHERE 1=1"
+            + _tw
+        )
+        open_cnt = query_db(f"SELECT COUNT(*) as c {_dq} AND d.status='open'", _ta, one=True)['c']
+        resolved_cnt = query_db(f"SELECT COUNT(*) as c {_dq} AND d.status='resolved'", _ta, one=True)['c']
+        my_created = query_db(f"SELECT COUNT(*) as c {_dq} AND d.reporter_id=?",
+                              _ta + [current_user.id], one=True)['c']
         overdue = query_db(
-            "SELECT COUNT(*) as c FROM defects WHERE due_date < to_char(now(),'YYYY-MM-DD') AND status NOT IN ('closed','verified')",
-            one=True)['c']
-        pc = _package_counts('inspector')
+            f"SELECT COUNT(*) as c {_dq} AND d.due_date < to_char(now(),'YYYY-MM-DD') AND d.status NOT IN ('closed','verified')",
+            _ta, one=True)['c']
+        pc = _package_counts('inspector', current_user)
         import config
         return render_template('dashboards/inspector.html',
                                role_label=config.ROLES.get('inspector'),
@@ -211,11 +240,13 @@ def register(app):
         if current_user.role != 'foreman' and current_user.role != 'admin':
             abort(403)
         from db import query_db
-        open_cnt = query_db("SELECT COUNT(*) as c FROM defects WHERE status='open'", one=True)['c']
-        my_created = query_db("SELECT COUNT(*) as c FROM defects WHERE reporter_id=?",
-                              (current_user.id,), one=True)['c']
-        in_progress = query_db("SELECT COUNT(*) as c FROM defects WHERE status='in_progress'", one=True)['c']
-        pc = _package_counts('foreman')
+        _tj, _tw, _ta = _tenant_obj_filter(current_user)
+        _dq = "FROM defects d JOIN objects o ON d.object_id = o.id WHERE 1=1" + _tw
+        open_cnt = query_db(f"SELECT COUNT(*) as c {_dq} AND d.status='open'", _ta, one=True)['c']
+        my_created = query_db(f"SELECT COUNT(*) as c {_dq} AND d.reporter_id=?",
+                              _ta + [current_user.id], one=True)['c']
+        in_progress = query_db(f"SELECT COUNT(*) as c {_dq} AND d.status='in_progress'", _ta, one=True)['c']
+        pc = _package_counts('foreman', current_user)
         import config
         return render_template('dashboards/foreman.html',
                                role_label=config.ROLES.get('foreman'),
@@ -228,9 +259,16 @@ def register(app):
         if current_user.role != 'supply' and current_user.role != 'admin':
             abort(403)
         from db import query_db
-        approved = query_db("SELECT COUNT(*) as c FROM material_requests WHERE status='approved'", one=True)['c']
-        processing = query_db("SELECT COUNT(*) as c FROM material_requests WHERE status='processing'", one=True)['c']
-        completed = query_db("SELECT COUNT(*) as c FROM material_requests WHERE status='completed'", one=True)['c']
+        _tj, _tw, _ta = _tenant_obj_filter(current_user)
+        _mrq = (
+            'FROM material_requests mr '
+            'JOIN construction_stages cs ON mr.stage_id = cs.id '
+            'JOIN objects o ON cs.object_id = o.id '
+            'WHERE 1=1' + _tw
+        )
+        approved = query_db(f"SELECT COUNT(*) as c {_mrq} AND mr.status='approved'", _ta, one=True)['c']
+        processing = query_db(f"SELECT COUNT(*) as c {_mrq} AND mr.status='processing'", _ta, one=True)['c']
+        completed = query_db(f"SELECT COUNT(*) as c {_mrq} AND mr.status='completed'", _ta, one=True)['c']
         import config
         return render_template('dashboards/supply.html',
                                role_label=config.ROLES.get('supply'),
@@ -242,7 +280,8 @@ def register(app):
         if current_user.role != 'accountant' and current_user.role != 'admin':
             abort(403)
         from db import query_db
-        pc = _package_counts('accountant')
+        _tj, _tw, _ta = _tenant_obj_filter(current_user)
+        pc = _package_counts('accountant', current_user)
         completed = query_db(
             "SELECT dp.*, ss.name as substage_name, cs.name as stage_name, "
             "o.name as object_name, org.name as contractor_name "
@@ -251,7 +290,8 @@ def register(app):
             "JOIN construction_stages cs ON ss.stage_id = cs.id "
             "JOIN objects o ON cs.object_id = o.id "
             "LEFT JOIN organizations org ON dp.contractor_id = org.id "
-            "WHERE dp.status = 'completed' ORDER BY dp.completed_at DESC LIMIT 10")
+            f"WHERE dp.status = 'completed'{_tw} ORDER BY dp.completed_at DESC LIMIT 10",
+            _ta)
         import config
         return render_template('dashboards/accountant.html',
                                role_label=config.ROLES.get('accountant'),

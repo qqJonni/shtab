@@ -5,7 +5,7 @@ from flask_login import login_required, current_user
 
 import config
 from db import get_db, query_db, execute_db, notify
-from helpers import role_required
+from helpers import role_required, assert_object_access
 
 # Роли, которые могут набирать/редактировать состав ИД
 ID_EDITORS = ('manager', 'pto', 'inspector', 'admin')
@@ -26,6 +26,7 @@ def _get_stage_or_403(stage_id):
         if not (current_user.role == 'contractor' and
                 stage['contractor_id'] == current_user.organization_id):
             abort(403)
+    assert_object_access(current_user, stage['object_id'])
     return stage
 
 

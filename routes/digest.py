@@ -6,7 +6,7 @@ from flask import abort, render_template, request, send_file
 from flask_login import current_user, login_required
 
 from db import query_db, notify
-from helpers import role_required
+from helpers import role_required, assert_object_access
 
 DIGEST_ROLES = ('manager', 'admin', 'pto')
 
@@ -352,6 +352,7 @@ def register(app):
         obj = query_db('SELECT * FROM objects WHERE id = ?', (obj_id,), one=True)
         if not obj:
             abort(404)
+        assert_object_access(current_user, obj_id)
 
         period = request.args.get('period', 'week')
         try:
