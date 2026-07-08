@@ -627,6 +627,10 @@ def register(app):
         id_required_total = sum(1 for i in id_items if i['is_required'])
         id_required_done = sum(1 for i in id_items if i['is_required'] and i['file_count'] > 0)
         id_missing = [i['title'] for i in id_items if i['is_required'] and i['file_count'] == 0]
+        # Активный пакет ИД на этом этапе
+        id_package = query_db(
+            "SELECT * FROM id_packages WHERE stage_id = ? ORDER BY id DESC LIMIT 1",
+            (stage_id,), one=True)
 
         return render_template('objects/stage_detail.html',
                                stage=stage, docs=docs, doc_type_labels=DOC_TYPE_LABELS,
@@ -637,6 +641,7 @@ def register(app):
                                id_required_total=id_required_total,
                                id_required_done=id_required_done,
                                id_missing=id_missing,
+                               id_package=id_package,
                                can_edit_id=current_user.role in ('manager','pto','inspector','admin'),
                                can_upload_id=current_user.role in ('manager','pto','admin') or (
                                    current_user.role in ('contractor','foreman') and
