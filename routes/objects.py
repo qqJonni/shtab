@@ -447,6 +447,28 @@ def register(app):
             except (ValueError, TypeError):
                 order_num = stage['order_num']
 
+            # ── Гейт закрытия этапа ──────────────────────────────────────────
+            if status == 'done' and stage['status'] != 'done':
+                subs = query_db(
+                    'SELECT status FROM substages WHERE stage_id = ?', (stage_id,))
+                not_done = [s for s in subs if s['status'] not in ('done', 'closed', 'approved')]
+                id_pkg = query_db(
+                    "SELECT status FROM id_packages WHERE stage_id = ? ORDER BY id DESC LIMIT 1",
+                    (stage_id,), one=True)
+                has_id_items = query_db(
+                    'SELECT COUNT(*) as c FROM id_checklist_items WHERE stage_id = ?',
+                    (stage_id,), one=True)['c'] > 0
+                id_not_accepted = has_id_items and (not id_pkg or id_pkg['status'] != 'accepted')
+
+                reasons = []
+                if not_done:
+                    reasons.append(f'не завершены подэтапы ({len(not_done)} шт.)')
+                if id_not_accepted:
+                    reasons.append('пакет ИД не принят')
+                if reasons:
+                    flash(f'Нельзя закрыть этап: {"; ".join(reasons)}.', 'danger')
+                    return render_template('objects/stage_form.html', obj=obj, stage=stage, next_order=None)
+
             execute_db(
                 'UPDATE construction_stages SET name=?, description=?, order_num=?, '
                 'plan_start_date=?, plan_end_date=?, status=? WHERE id=?',
@@ -632,6 +654,17 @@ def register(app):
             "SELECT * FROM id_packages WHERE stage_id = ? ORDER BY id DESC LIMIT 1",
             (stage_id,), one=True)
 
+        # Индикатор готовности к закрытию этапа
+        close_blockers = []
+        if stage['status'] != 'done':
+            not_done_subs = [s for s in substages if s['status'] not in ('done', 'closed', 'approved')]
+            if not_done_subs:
+                close_blockers.append(f'не завершены подэтапы ({len(not_done_subs)} шт.)')
+            if id_items:
+                id_not_accepted = not id_package or id_package['status'] != 'accepted'
+                if id_not_accepted:
+                    close_blockers.append('пакет ИД не принят')
+
         return render_template('objects/stage_detail.html',
                                stage=stage, docs=docs, doc_type_labels=DOC_TYPE_LABELS,
                                can_upload=_can_upload_doc(stage),
@@ -642,6 +675,7 @@ def register(app):
                                id_required_done=id_required_done,
                                id_missing=id_missing,
                                id_package=id_package,
+                               close_blockers=close_blockers,
                                can_edit_id=current_user.role in ('manager','pto','inspector','admin'),
                                can_upload_id=current_user.role in ('manager','pto','admin') or (
                                    current_user.role in ('contractor','foreman') and

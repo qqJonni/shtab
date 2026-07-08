@@ -25,6 +25,18 @@
   </div>
 </div>
 
+{# Индикатор готовности к закрытию #}
+{% if close_blockers and current_user.role in ('manager','admin') %}
+<div class="alert mb-3 py-2 px-3 d-flex align-items-start gap-2"
+     style="background:#FEF3C7;border:1px solid #F59E0B;border-radius:12px;font-size:13px">
+  <i class="bi bi-lock" style="color:#D97706;margin-top:2px;flex-shrink:0"></i>
+  <div>
+    <span class="fw-medium" style="color:#92400E">Этап нельзя закрыть: </span>
+    <span style="color:#78350F">{{ close_blockers | join('; ') }}.</span>
+  </div>
+</div>
+{% endif %}
+
 {# Информация об этапе #}
 <div class="card mb-4">
   <div class="card-body p-4">
