@@ -158,5 +158,55 @@ python3 -c "from routes.digest import send_weekly_digests; send_weekly_digests()
 
 ---
 
+## Модуль «Исполнительная документация (ИД)» — влит в main (ветка id-module)
+
+### Что сделано (Шаги 0–5)
+К каждому этапу строительства — чеклист обязательных и необязательных документов ИД. Подрядчик загружает файлы. Готовность считается по обязательным пунктам. Пакет ИД проходит согласование inspector→pto→manager. Этап нельзя закрыть без принятого пакета ИД и завершённых подэтапов.
+
+### Новые файлы
+```
+routes/id_module.py           — все маршруты ИД
+templates/id/package_detail.html — страница пакета ИД
+static/id_docs/<stage_id>/   — загруженные файлы (вне git)
+```
+
+### Таблицы БД (идемпотентные миграции в run_migrations)
+```
+id_item_types      — справочник типов документов ИД (18 позиций, seed)
+id_checklist_items — состав ИД по этапу (stage_id, type_id, title, is_required, order_num)
+id_documents       — файлы к пунктам (item_id, filename, original_name, uploaded_by)
+id_packages        — пакеты ИД (stage_id, contractor_id, status: draft/in_review/returned/accepted)
+id_approval_steps  — шаги цепочки (package_id, step_order, role, status: pending/waiting/approved/returned)
+```
+
+### Маршруты
+| URL | Endpoint |
+|-----|----------|
+| POST `/stages/<id>/id/add` | `id_item_add` |
+| POST `/stages/<id>/id/<item_id>/delete` | `id_item_delete` |
+| POST `/stages/<id>/id/<item_id>/toggle-required` | `id_item_toggle_required` |
+| POST `/stages/<id>/id/<item_id>/move/<dir>` | `id_item_move` |
+| POST `/stages/<id>/id/<item_id>/upload` | `id_file_upload` |
+| GET  `/stages/<id>/id/files/<file_id>/download` | `id_file_download` |
+| POST `/stages/<id>/id/files/<file_id>/delete` | `id_file_delete` |
+| GET  `/id-packages/<id>` | `id_package_detail` |
+| POST `/stages/<id>/id/submit` | `id_package_submit` |
+| POST `/id-packages/<id>/resubmit` | `id_package_resubmit` |
+| POST `/id-packages/<id>/approve` | `id_package_approve` |
+| POST `/id-packages/<id>/return` | `id_package_return` |
+
+### Цепочка согласования
+`ID_APPROVAL_CHAIN` в `config.py`:  `inspector → pto → manager`. Прямой возврат к вернувшей роли при resubmit (как в КС-пакетах).
+
+### Константы доступа
+- `ID_EDITORS = ('manager','pto','inspector','admin')` — набирают/редактируют состав
+- `ID_UPLOADERS = ('contractor','foreman','manager','pto','admin')` — загружают файлы
+- Подрядчик-uploader — только если `organization_id == stage.contractor_id`
+
+### Гейт закрытия этапа (stage_edit)
+Переход в `done` блокируется если: не все подэтапы в `done/closed/approved` **ИЛИ** у этапа есть ИД-пункты и пакет ИД не в `accepted`. Индикатор готовности — жёлтый баннер с замком на странице этапа (только manager/admin).
+
+---
+
 ## Рабочий процесс
 Модулями (0–6, см. мастер-спецификацию). Для каждого — отдельное ТЗ с критериями приёмки, шаги по одному, после шага — самопроверка. Перед стартом модуля — `git checkout -b <модуль>`.
