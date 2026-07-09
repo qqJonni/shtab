@@ -22,8 +22,13 @@ def register(app):
     @login_required
     @role_required('admin', 'manager')
     def user_approve(user_id):
-        execute_db('UPDATE users SET is_approved = 1 WHERE id = ?', (user_id,))
-        flash('Пользователь подтверждён.', 'success')
+        role = request.form.get('role', '').strip()
+        assignable = [r for r in config.ROLES if r not in ('admin', 'guest')]
+        if role not in assignable:
+            flash('Выберите роль перед подтверждением.', 'danger')
+            return redirect(url_for('users_list'))
+        execute_db('UPDATE users SET is_approved = 1, role = ? WHERE id = ?', (role, user_id))
+        flash('Пользователь подтверждён и роль назначена.', 'success')
         return redirect(url_for('users_list'))
 
     @app.route('/admin/users/<int:user_id>/block', methods=['POST'])
@@ -131,6 +136,77 @@ def register(app):
             return redirect(url_for('users_list'))
 
         return render_template('admin/user_delete.html', user=user, links=links)
+
+    # ═══ Организации ═══
+
+    @app.route('/admin/organizations')
+    @login_required
+    @role_required('admin')
+    def org_list():
+        orgs = query_db(
+            'SELECT o.*, COUNT(u.id) as user_count '
+            'FROM organizations o LEFT JOIN users u ON u.organization_id = o.id '
+            'GROUP BY o.id ORDER BY o.type, o.name')
+        return render_template('admin/organizations.html', orgs=orgs)
+
+    @app.route('/admin/organizations/add', methods=['GET', 'POST'])
+    @login_required
+    @role_required('admin')
+    def org_add():
+        import secrets
+        if request.method == 'POST':
+            name    = request.form.get('name', '').strip()
+            org_type = request.form.get('type', 'developer')
+            if org_type not in ('developer', 'contractor'):
+                org_type = 'developer'
+            if not name:
+                flash('Введите название организации.', 'danger')
+                return render_template('admin/org_add.html')
+            # generate unique join_code
+            for _ in range(10):
+                code = secrets.token_urlsafe(6)[:8].upper()
+                if not query_db('SELECT 1 FROM organizations WHERE join_code = ?', (code,), one=True):
+                    break
+            execute_db(
+                "INSERT INTO organizations (name, type, join_code, status) VALUES (?, ?, ?, 'active')",
+                (name, org_type, code)
+            )
+            org = query_db('SELECT id FROM organizations WHERE join_code = ?', (code,), one=True)
+            flash(
+                f'Организация «{name}» создана. Код для регистрации: <strong>{code}</strong>. '
+                'Передайте его сотрудникам.',
+                'success'
+            )
+            return redirect(url_for('org_list'))
+        return render_template('admin/org_add.html')
+
+    @app.route('/admin/organizations/<int:org_id>/toggle', methods=['POST'])
+    @login_required
+    @role_required('admin')
+    def org_toggle(org_id):
+        org = query_db('SELECT status FROM organizations WHERE id = ?', (org_id,), one=True)
+        if not org:
+            abort(404)
+        new_status = 'inactive' if org['status'] == 'active' else 'active'
+        execute_db('UPDATE organizations SET status = ? WHERE id = ?', (new_status, org_id))
+        flash('Статус организации изменён.', 'success')
+        return redirect(url_for('org_list'))
+
+    @app.route('/admin/organizations/<int:org_id>/regen_code', methods=['POST'])
+    @login_required
+    @role_required('admin')
+    def org_regen_code(org_id):
+        import secrets
+        org = query_db('SELECT id FROM organizations WHERE id = ?', (org_id,), one=True)
+        if not org:
+            abort(404)
+        for _ in range(10):
+            code = secrets.token_urlsafe(6)[:8].upper()
+            if not query_db('SELECT 1 FROM organizations WHERE join_code = ? AND id != ?', (code, org_id), one=True):
+                break
+        execute_db('UPDATE organizations SET join_code = ? WHERE id = ?', (code, org_id))
+        flash(f'Новый код организации: <strong>{code}</strong>', 'success')
+        return redirect(url_for('org_list'))
 
 
 def _get_user_links(user_id):
