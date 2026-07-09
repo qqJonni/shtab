@@ -20,7 +20,7 @@
 - **PostgreSQL** (psycopg2-binary==2.9.9); строка подключения — `DATABASE_URL` из `.env`; SQLite удалён
 - Bootstrap 5.3.3 + Bootstrap Icons + шрифт Inter; кастом в `static/css/crm.css`
 - openpyxl (экспорт + генерация форм КС)
-- Уведомления — внутренний центр (таблица + колокольчик); web/email-push позже
+- Уведомления — внутренний центр (таблица + колокольчик) + Web Push (VAPID/pywebpush, `routes/pwa.py`, таблица `push_subscriptions`); email-push пока нет
 
 ## Архитектура (с самого начала — чисто и модульно)
 ```
@@ -28,9 +28,14 @@ app.py            — app-factory, регистрация модулей, init_d
 config.py         — константы, роли, настройки, SECRET_KEY из .env
 db.py             — get_db, query_db, execute_db, get/set_setting, notify()
 helpers.py        — декораторы (@role_required), утилиты фото, расчёты, уведомления
-routes/           — модули по доменам: auth, objects, stages, substages,
-                    defects, packages (согласование), supply, notifications,
-                    dashboards, admin
+routes/           — модули по доменам: auth, objects (объекты/этапы/подэтапы/
+                    команда объекта), defects, packages (согласование КС),
+                    supply, notifications, dashboards, admin, export,
+                    report_page (конструктор отчётов), guest, plans (планы
+                    этажей + пины замечаний), pwa (manifest/SW/Web Push),
+                    smeta (импорт сметы), digest (сводка по объекту),
+                    id_module (исполнительная документация), journal
+                    (журнал производства работ + PDF-отчёт по объекту)
 templates/        — по доменам; base.html (sidebar/topbar/мобильное меню)
 static/           — css/crm.css; папки загрузок (фото, документы) вне git
 ```

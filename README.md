@@ -7,7 +7,7 @@
 ## Стек
 
 - Flask + Flask-Login
-- SQLite
+- PostgreSQL (psycopg2)
 - Bootstrap 5.3.3 + Inter
 - openpyxl (Excel-экспорт, генерация КС)
 
@@ -17,5 +17,6 @@
 python -m venv venv
 source venv/bin/activate
 pip install -r requirements.txt
+cp .env.example .env   # заполнить DATABASE_URL, SECRET_KEY и т.д.
 python app.py
 ```
