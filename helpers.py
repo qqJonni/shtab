@@ -60,6 +60,26 @@ def assert_object_access(user, object_id):
         abort(403)
 
 
+TEAM_ROLES = [
+    ('inspector',  'Технадзор'),
+    ('pto',        'Инженер ПТО'),
+    ('foreman',    'Прораб'),
+    ('manager',    'Руководитель'),
+    ('accountant', 'Бухгалтер'),
+    ('supply',     'Снабженец'),
+]
+
+
+def get_object_team(object_id):
+    """Returns {role: {'id': user_id, 'full_name': ..., 'user_role': role}} for the object."""
+    from db import query_db
+    rows = query_db(
+        'SELECT ot.role, u.id, u.full_name, u.role as user_role '
+        'FROM object_team ot JOIN users u ON ot.user_id = u.id '
+        'WHERE ot.object_id = ?', (object_id,))
+    return {r['role']: dict(r) for r in rows}
+
+
 def role_required(*roles):
     def decorator(f):
         @wraps(f)

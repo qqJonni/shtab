@@ -5,7 +5,7 @@ from flask_login import login_required, current_user
 
 import config
 from db import query_db, execute_db, get_db, notify
-from helpers import role_required, assert_object_access, save_package_document
+from helpers import role_required, assert_object_access, get_object_team, save_package_document
 
 DOC_TYPE_LABELS = {
     'ks2': 'КС-2',
@@ -367,6 +367,15 @@ def register(app):
             flash('Добавьте хотя бы один документ перед отправкой.', 'danger')
             return redirect(url_for('package_detail', package_id=package_id))
 
+        # Проверяем команду объекта — все роли цепочки должны быть назначены
+        team = get_object_team(full['object_id'])
+        chain_roles = [role for role, _ in config.APPROVAL_CHAIN]
+        missing = [dict(config.APPROVAL_CHAIN).get(r, r) for r in chain_roles if r not in team]
+        if missing:
+            flash(f'Нельзя отправить: в команде объекта не назначены — {", ".join(missing)}. '
+                  'Руководитель должен назначить команду на странице объекта.', 'danger')
+            return redirect(url_for('package_detail', package_id=package_id))
+
         db = get_db()
         db.execute(
             "UPDATE doc_packages SET status = 'in_review', submitted_at = CURRENT_TIMESTAMP WHERE id = ?",
@@ -377,19 +386,28 @@ def register(app):
 
         for i, (role, _) in enumerate(config.APPROVAL_CHAIN, 1):
             status = 'pending' if i == 1 else 'waiting'
+            approver_id = team.get(role, {}).get('id')
             db.execute(
-                'INSERT INTO approval_steps (package_id, step_order, role, status) VALUES (?, ?, ?, ?)',
-                (package_id, i, role, status))
+                'INSERT INTO approval_steps (package_id, step_order, role, status, approver_id) VALUES (?, ?, ?, ?, ?)',
+                (package_id, i, role, status, approver_id))
         db.commit()
 
         first_role = config.APPROVAL_CHAIN[0][0]
-        users = query_db("SELECT id FROM users WHERE role = ? AND is_approved = 1", (first_role,))
-        for u in users:
-            notify(u['id'], 'approval',
+        first_approver = team.get(first_role, {})
+        if first_approver.get('id'):
+            notify(first_approver['id'], 'approval',
                    f'Пакет на согласование: {full["substage_name"]}',
                    f'Подрядчик «{full["contractor_name"]}» отправил пакет по подэтапу «{full["substage_name"]}» '
                    f'(объект «{full["object_name"]}», этап «{full["stage_name"]}»).',
                    f'/packages/{package_id}')
+        else:
+            users = query_db("SELECT id FROM users WHERE role = ? AND is_approved = 1", (first_role,))
+            for u in users:
+                notify(u['id'], 'approval',
+                       f'Пакет на согласование: {full["substage_name"]}',
+                       f'Подрядчик «{full["contractor_name"]}» отправил пакет по подэтапу «{full["substage_name"]}» '
+                       f'(объект «{full["object_name"]}», этап «{full["stage_name"]}»).',
+                       f'/packages/{package_id}')
 
         flash('Пакет отправлен на согласование.', 'success')
         return redirect(url_for('package_detail', package_id=package_id))
@@ -410,9 +428,18 @@ def register(app):
         db.commit()
 
         target_role = return_to or config.APPROVAL_CHAIN[0][0]
-        users = query_db("SELECT id FROM users WHERE role = ? AND is_approved = 1", (target_role,))
-        for u in users:
-            notify(u['id'], 'approval',
+        # Уведомить конкретного согласующего (по approver_id шага), иначе всю роль
+        pending_step = query_db(
+            "SELECT approver_id FROM approval_steps WHERE package_id = ? AND role = ? AND status = 'pending'",
+            (package_id, target_role), one=True)
+        target_user_ids = []
+        if pending_step and pending_step['approver_id']:
+            target_user_ids = [pending_step['approver_id']]
+        else:
+            target_user_ids = [u['id'] for u in query_db(
+                "SELECT id FROM users WHERE role = ? AND is_approved = 1", (target_role,))]
+        for uid in target_user_ids:
+            notify(uid, 'approval',
                    f'Пакет повторно отправлен: {full["substage_name"]}',
                    f'Подрядчик исправил и повторно отправил пакет по подэтапу «{full["substage_name"]}».',
                    f'/packages/{package_id}')
@@ -468,7 +495,7 @@ def register(app):
                     'LEFT JOIN organizations org ON dp.contractor_id = org.id '
                     "WHERE dp.status != 'completed' ORDER BY dp.created_at DESC")
         elif current_user.role in dict(config.APPROVAL_CHAIN):
-            # Согласующие роли: только свои pending + архив
+            # Согласующие роли: только свои pending (по approver_id или роли) + архив
             if tab == 'archive':
                 pkgs = query_db(
                     'SELECT dp.*, ss.name as substage_name, cs.name as stage_name, o.name as object_name, '
@@ -489,18 +516,19 @@ def register(app):
                     'JOIN objects o ON cs.object_id = o.id '
                     'LEFT JOIN organizations org ON dp.contractor_id = org.id '
                     'JOIN approval_steps a ON a.package_id = dp.id '
-                    "WHERE a.role = ? AND a.status = 'pending' AND dp.status = 'in_review' "
+                    "WHERE (a.approver_id = ? OR (a.approver_id IS NULL AND a.role = ?)) "
+                    "AND a.status = 'pending' AND dp.status = 'in_review' "
                     'ORDER BY dp.created_at DESC',
-                    (current_user.role,))
+                    (current_user.id, current_user.role))
         else:
             abort(403)
 
         my_pending = []
         if current_user.role in dict(config.APPROVAL_CHAIN):
             my_pending = query_db(
-                'SELECT a.package_id FROM approval_steps a '
-                'WHERE a.role = ? AND a.status = \'pending\'',
-                (current_user.role,))
+                "SELECT a.package_id FROM approval_steps a "
+                "WHERE (a.approver_id = ? OR (a.approver_id IS NULL AND a.role = ?)) AND a.status = 'pending'",
+                (current_user.id, current_user.role))
             my_pending = [r['package_id'] for r in my_pending]
 
         return render_template('packages/list.html', pkgs=pkgs,
@@ -513,8 +541,9 @@ def register(app):
         if current_user.role not in dict(config.APPROVAL_CHAIN):
             return None
         return query_db(
-            "SELECT * FROM approval_steps WHERE package_id = ? AND role = ? AND status = 'pending'",
-            (package_id, current_user.role), one=True)
+            "SELECT * FROM approval_steps WHERE package_id = ? AND status = 'pending' "
+            "AND (approver_id = ? OR (approver_id IS NULL AND role = ?))",
+            (package_id, current_user.id, current_user.role), one=True)
 
     @app.route('/packages/<int:package_id>/approve', methods=['POST'])
     @login_required
@@ -546,12 +575,18 @@ def register(app):
 
             next_role = next_step['role']
             role_label = dict(config.APPROVAL_CHAIN).get(current_user.role, current_user.role)
-            users = query_db("SELECT id FROM users WHERE role = ? AND is_approved = 1", (next_role,))
-            for u in users:
-                notify(u['id'], 'approval',
+            if next_step.get('approver_id'):
+                notify(next_step['approver_id'], 'approval',
                        f'Ваша очередь: пакет «{full["substage_name"]}»',
                        f'{role_label} согласовал(а) пакет по подэтапу «{full["substage_name"]}». Ваша очередь.',
                        f'/packages/{package_id}')
+            else:
+                users = query_db("SELECT id FROM users WHERE role = ? AND is_approved = 1", (next_role,))
+                for u in users:
+                    notify(u['id'], 'approval',
+                           f'Ваша очередь: пакет «{full["substage_name"]}»',
+                           f'{role_label} согласовал(а) пакет по подэтапу «{full["substage_name"]}». Ваша очередь.',
+                           f'/packages/{package_id}')
         else:
             db.execute(
                 "UPDATE doc_packages SET status = 'completed', completed_at = CURRENT_TIMESTAMP WHERE id = ?",

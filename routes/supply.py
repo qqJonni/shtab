@@ -3,7 +3,7 @@ from flask_login import login_required, current_user
 
 import config
 from db import query_db, execute_db, get_db, notify
-from helpers import role_required, assert_object_access
+from helpers import role_required, assert_object_access, get_object_team
 
 STATUS_LABELS = {
     'submitted': 'Отправлена',
@@ -192,9 +192,14 @@ def register(app):
                 (req_id, current_user.id, 'created'))
             db.commit()
 
-            # Notify PTO
+            # Notify PTO (specific team member first, fallback to all PTO)
             obj = query_db('SELECT name FROM objects WHERE id = ?', (stage['object_id'],), one=True)
-            pto_users = query_db("SELECT id FROM users WHERE role = 'pto' AND is_approved = 1")
+            team = get_object_team(stage['object_id'])
+            pto_id = team.get('pto', {}).get('id')
+            if pto_id:
+                pto_users = [{'id': pto_id}]
+            else:
+                pto_users = query_db("SELECT id FROM users WHERE role = 'pto' AND is_approved = 1")
             for u in pto_users:
                 notify(u['id'], 'supply',
                        f'Заявка на материал #{req_id}',
@@ -241,7 +246,12 @@ def register(app):
         _write_history(req_id, 'approved', comment)
 
         full = _get_request_full(req_id)
-        supply_users = query_db("SELECT id FROM users WHERE role='supply' AND is_approved=1")
+        team = get_object_team(full['object_id'])
+        supply_id = team.get('supply', {}).get('id')
+        if supply_id:
+            supply_users = [{'id': supply_id}]
+        else:
+            supply_users = query_db("SELECT id FROM users WHERE role='supply' AND is_approved=1")
         for u in supply_users:
             notify(u['id'], 'supply',
                    f'Заявка #{req_id} одобрена ПТО',

@@ -5,7 +5,7 @@ from flask_login import login_required, current_user
 
 import config
 from db import get_db, query_db, execute_db, notify
-from helpers import role_required, assert_object_access
+from helpers import role_required, assert_object_access, get_object_team
 
 # Роли, которые могут набирать/редактировать состав ИД
 ID_EDITORS = ('manager', 'pto', 'inspector', 'admin')
@@ -271,8 +271,9 @@ def register(app):
         if current_user.role not in chain_roles:
             return None
         return query_db(
-            "SELECT * FROM id_approval_steps WHERE package_id = %s AND role = %s AND status = 'pending'",
-            (pkg_id, current_user.role), one=True)
+            "SELECT * FROM id_approval_steps WHERE package_id = %s AND status = 'pending' "
+            "AND (approver_id = %s OR (approver_id IS NULL AND role = %s))",
+            (pkg_id, current_user.id, current_user.role), one=True)
 
     # ─── Страница пакета ИД ──────────────────────────────────────────────────
 
@@ -333,6 +334,15 @@ def register(app):
             flash('Состав ИД пуст — добавьте пункты.', 'danger')
             return redirect(url_for('stage_detail', stage_id=stage_id) + '#id-checklist')
 
+        # Проверяем команду объекта
+        team = get_object_team(stage['object_id'])
+        chain_roles = [role for role, _ in config.ID_APPROVAL_CHAIN]
+        missing = [dict(config.ID_APPROVAL_CHAIN).get(r, r) for r in chain_roles if r not in team]
+        if missing:
+            flash(f'Нельзя отправить: в команде объекта не назначены — {", ".join(missing)}. '
+                  'Руководитель должен назначить команду на странице объекта.', 'danger')
+            return redirect(url_for('stage_detail', stage_id=stage_id) + '#id-checklist')
+
         db = get_db()
         cur = db.execute(
             'INSERT INTO id_packages (stage_id, contractor_id, created_by, status) '
@@ -344,19 +354,27 @@ def register(app):
 
         for i, (role, _) in enumerate(config.ID_APPROVAL_CHAIN, 1):
             status = 'pending' if i == 1 else 'waiting'
+            approver_id = team.get(role, {}).get('id')
             db.execute(
-                'INSERT INTO id_approval_steps (package_id, step_order, role, status) '
-                'VALUES (%s, %s, %s, %s)',
-                (pkg_id, i, role, status))
+                'INSERT INTO id_approval_steps (package_id, step_order, role, status, approver_id) '
+                'VALUES (%s, %s, %s, %s, %s)',
+                (pkg_id, i, role, status, approver_id))
         db.commit()
 
         first_role = config.ID_APPROVAL_CHAIN[0][0]
-        users = query_db('SELECT id FROM users WHERE role = %s AND is_approved = 1', (first_role,))
-        for u in users:
-            notify(u['id'], 'approval',
+        first_approver = team.get(first_role, {})
+        if first_approver.get('id'):
+            notify(first_approver['id'], 'approval',
                    f'Пакет ИД на приёмку: {stage["name"]}',
                    f'Подрядчик «{stage["contractor_name"]}» отправил пакет ИД по этапу «{stage["name"]}».',
                    f'/id-packages/{pkg_id}')
+        else:
+            users = query_db('SELECT id FROM users WHERE role = %s AND is_approved = 1', (first_role,))
+            for u in users:
+                notify(u['id'], 'approval',
+                       f'Пакет ИД на приёмку: {stage["name"]}',
+                       f'Подрядчик «{stage["contractor_name"]}» отправил пакет ИД по этапу «{stage["name"]}».',
+                       f'/id-packages/{pkg_id}')
 
         flash('Пакет ИД отправлен на приёмку.', 'success')
         return redirect(url_for('id_package_detail', pkg_id=pkg_id))
@@ -385,12 +403,21 @@ def register(app):
         db.commit()
 
         target_role = return_to or config.ID_APPROVAL_CHAIN[0][0]
-        users = query_db('SELECT id FROM users WHERE role = %s AND is_approved = 1', (target_role,))
-        for u in users:
-            notify(u['id'], 'approval',
+        pending_step = query_db(
+            "SELECT approver_id FROM id_approval_steps WHERE package_id = %s AND role = %s AND status = 'pending'",
+            (pkg_id, target_role), one=True)
+        if pending_step and pending_step['approver_id']:
+            notify(pending_step['approver_id'], 'approval',
                    f'Пакет ИД повторно отправлен: {pkg["stage_name"]}',
                    f'Подрядчик исправил и повторно отправил пакет ИД по этапу «{pkg["stage_name"]}».',
                    f'/id-packages/{pkg_id}')
+        else:
+            users = query_db('SELECT id FROM users WHERE role = %s AND is_approved = 1', (target_role,))
+            for u in users:
+                notify(u['id'], 'approval',
+                       f'Пакет ИД повторно отправлен: {pkg["stage_name"]}',
+                       f'Подрядчик исправил и повторно отправил пакет ИД по этапу «{pkg["stage_name"]}».',
+                       f'/id-packages/{pkg_id}')
 
         flash('Пакет ИД повторно отправлен.', 'success')
         return redirect(url_for('id_package_detail', pkg_id=pkg_id))
@@ -423,12 +450,18 @@ def register(app):
             db.execute("UPDATE id_approval_steps SET status = 'pending' WHERE id = %s", (next_step['id'],))
             db.commit()
             role_label = dict(config.ID_APPROVAL_CHAIN).get(current_user.role, current_user.role)
-            users = query_db('SELECT id FROM users WHERE role = %s AND is_approved = 1', (next_step['role'],))
-            for u in users:
-                notify(u['id'], 'approval',
+            if next_step.get('approver_id'):
+                notify(next_step['approver_id'], 'approval',
                        f'Ваша очередь: пакет ИД «{full["stage_name"]}»',
                        f'{role_label} принял(а) пакет ИД по этапу «{full["stage_name"]}». Ваша очередь.',
                        f'/id-packages/{pkg_id}')
+            else:
+                users = query_db('SELECT id FROM users WHERE role = %s AND is_approved = 1', (next_step['role'],))
+                for u in users:
+                    notify(u['id'], 'approval',
+                           f'Ваша очередь: пакет ИД «{full["stage_name"]}»',
+                           f'{role_label} принял(а) пакет ИД по этапу «{full["stage_name"]}». Ваша очередь.',
+                           f'/id-packages/{pkg_id}')
         else:
             # Последний шаг — пакет принят
             db.execute(
