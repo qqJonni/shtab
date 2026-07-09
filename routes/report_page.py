@@ -5,7 +5,7 @@ from openpyxl import Workbook
 from openpyxl.styles import Font, Border, Side, PatternFill, Alignment
 
 from db import query_db
-from helpers import role_required
+from helpers import role_required, accessible_object_ids
 
 
 def register(app):
@@ -14,7 +14,10 @@ def register(app):
     @login_required
     @role_required('manager', 'admin', 'pto')
     def reports_page():
-        objects = query_db("SELECT id, name FROM objects WHERE status='active' ORDER BY name")
+        ids = accessible_object_ids(current_user)
+        objects = query_db(
+            "SELECT id, name FROM objects WHERE status='active' AND id = ANY(?) ORDER BY name",
+            (ids,)) if ids else []
         contractors = query_db("SELECT id, name FROM organizations WHERE type='contractor' ORDER BY name")
         return render_template('reports/index.html', objects=objects, contractors=contractors)
 
@@ -30,7 +33,11 @@ def register(app):
         where_obj = f'AND cs.object_id = {int(obj_id)}' if obj_id else ''
         where_stage = f'AND cs.id = {int(stage_id)}' if stage_id else ''
         where_con = f'AND cs.contractor_id = {int(contractor_id)}' if contractor_id else ''
-        filters = f'{where_obj} {where_stage} {where_con}'
+        if current_user.role != 'admin' and current_user.organization_id:
+            where_tenant = f"AND cs.object_id IN (SELECT id FROM objects WHERE developer_id = {current_user.organization_id})"
+        else:
+            where_tenant = ''
+        filters = f'{where_obj} {where_stage} {where_con} {where_tenant}'
 
         if report_type == 'substages_status':
             rows = query_db(

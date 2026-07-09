@@ -2,7 +2,8 @@ from flask import render_template, redirect, url_for, request, flash, abort, jso
 from flask_login import login_required, current_user
 
 from db import query_db, execute_db, get_db, notify
-from helpers import role_required, save_defect_photo, save_defect_audio
+from helpers import role_required, accessible_object_ids, assert_object_access, \
+    save_defect_photo, save_defect_audio
 
 DEFECT_VIEWERS = ('manager', 'admin', 'pto', 'inspector', 'foreman')
 DEFECT_CREATORS = ('inspector', 'foreman', 'admin')
@@ -60,6 +61,9 @@ def register(app):
         if current_user.role == 'contractor':
             where.append('d.contractor_id = ?')
             args.append(current_user.organization_id)
+        elif current_user.role != 'admin' and current_user.organization_id:
+            where.append('d.object_id IN (SELECT id FROM objects WHERE developer_id = ?)')
+            args.append(current_user.organization_id)
 
         f_object = request.args.get('object_id', '')
         f_stage = request.args.get('stage_id', '')
@@ -88,11 +92,14 @@ def register(app):
 
         defects = _defects_base_query(where, args)
 
-        # Счётчики по статусам (с учётом contractor)
+        # Счётчики по статусам (с учётом tenant)
         count_where = []
         count_args = []
         if current_user.role == 'contractor':
             count_where.append('contractor_id = ?')
+            count_args.append(current_user.organization_id)
+        elif current_user.role != 'admin' and current_user.organization_id:
+            count_where.append('object_id IN (SELECT id FROM objects WHERE developer_id = ?)')
             count_args.append(current_user.organization_id)
         count_sql = ' AND '.join(count_where) if count_where else '1=1'
         counts = {}
@@ -101,7 +108,13 @@ def register(app):
                            [st] + count_args, one=True)
             counts[st] = row['c']
 
-        objects = query_db("SELECT id, name FROM objects WHERE status='active' ORDER BY name")
+        ids = accessible_object_ids(current_user)
+        if not ids:
+            objects = []
+        else:
+            objects = query_db(
+                "SELECT id, name FROM objects WHERE status='active' AND id = ANY(?) ORDER BY name",
+                (ids,))
         types = query_db('SELECT id, name FROM defect_types ORDER BY order_num')
 
         return render_template('defects/list.html',
@@ -187,7 +200,10 @@ def register(app):
             flash('Замечание создано.', 'success')
             return redirect(url_for('defect_detail', defect_id=defect_id))
 
-        objects = query_db("SELECT id, name FROM objects WHERE status='active' ORDER BY name")
+        ids = accessible_object_ids(current_user)
+        objects = query_db(
+            "SELECT id, name FROM objects WHERE status='active' AND id = ANY(?) ORDER BY name",
+            (ids,)) if ids else []
         types = query_db('SELECT id, name FROM defect_types ORDER BY order_num')
         preselect_object = request.args.get('object_id', '')
         preselect_plan = request.args.get('plan_id', '')
@@ -202,7 +218,8 @@ def register(app):
         d = query_db(
             'SELECT d.*, o.name as object_name, cs.name as stage_name, '
             'ss.name as substage_name, dt.name as type_name, '
-            'u.full_name as reporter_name, org.name as contractor_name '
+            'u.full_name as reporter_name, org.name as contractor_name, '
+            'o.developer_id '
             'FROM defects d '
             'JOIN objects o ON d.object_id = o.id '
             'LEFT JOIN construction_stages cs ON d.stage_id = cs.id '
@@ -213,6 +230,7 @@ def register(app):
             'WHERE d.id = ?', (defect_id,), one=True)
         if not d or not _can_view_defect(d):
             abort(403)
+        assert_object_access(current_user, d['object_id'])
 
         photos = query_db(
             'SELECT dp.*, u.full_name as uploader_name FROM defect_photos dp '

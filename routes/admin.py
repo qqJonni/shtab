@@ -12,26 +12,51 @@ def register(app):
     @login_required
     @role_required('admin', 'manager')
     def users_list():
-        users = query_db(
-            'SELECT u.*, o.name as org_name FROM users u '
-            'LEFT JOIN organizations o ON u.organization_id = o.id '
-            'ORDER BY u.is_approved, u.created_at DESC')
+        if current_user.role == 'manager':
+            # manager sees only users from their own tenant org
+            users = query_db(
+                'SELECT u.*, o.name as org_name FROM users u '
+                'LEFT JOIN organizations o ON u.organization_id = o.id '
+                'WHERE u.organization_id = ? '
+                'ORDER BY u.is_approved, u.created_at DESC',
+                (current_user.organization_id,))
+        else:
+            users = query_db(
+                'SELECT u.*, o.name as org_name FROM users u '
+                'LEFT JOIN organizations o ON u.organization_id = o.id '
+                'ORDER BY u.is_approved, u.created_at DESC')
         return render_template('admin/users.html', users=users)
+
+    def _assert_same_tenant(user_id):
+        """Returns the user row if current manager can act on them, else aborts 403."""
+        target = query_db('SELECT * FROM users WHERE id = ?', (user_id,), one=True)
+        if not target:
+            abort(404)
+        if current_user.role == 'manager':
+            if target['organization_id'] != current_user.organization_id:
+                abort(403)
+        return target
 
     @app.route('/admin/users/<int:user_id>/approve', methods=['POST'])
     @login_required
     @role_required('admin', 'manager')
     def user_approve(user_id):
-        execute_db('UPDATE users SET is_approved = 1 WHERE id = ?', (user_id,))
-        flash('Пользователь подтверждён.', 'success')
+        _assert_same_tenant(user_id)
+        role = request.form.get('role', '').strip()
+        assignable = [r for r in config.ROLES if r not in ('admin', 'guest')]
+        if role not in assignable:
+            flash('Выберите роль перед подтверждением.', 'danger')
+            return redirect(url_for('users_list'))
+        execute_db('UPDATE users SET is_approved = 1, role = ? WHERE id = ?', (role, user_id))
+        flash('Пользователь подтверждён и роль назначена.', 'success')
         return redirect(url_for('users_list'))
 
     @app.route('/admin/users/<int:user_id>/block', methods=['POST'])
     @login_required
     @role_required('admin', 'manager')
     def user_block(user_id):
-        user = query_db('SELECT role FROM users WHERE id = ?', (user_id,), one=True)
-        if user and user['role'] == 'admin':
+        user = _assert_same_tenant(user_id)
+        if user['role'] == 'admin':
             flash('Нельзя заблокировать администратора.', 'danger')
             return redirect(url_for('users_list'))
         execute_db('UPDATE users SET is_approved = 0 WHERE id = ?', (user_id,))
@@ -54,19 +79,25 @@ def register(app):
     @login_required
     @role_required('admin', 'manager')
     def user_edit(user_id):
+        _assert_same_tenant(user_id)
         user = query_db(
             'SELECT u.*, o.name as org_name FROM users u '
             'LEFT JOIN organizations o ON u.organization_id = o.id WHERE u.id = ?',
             (user_id,), one=True)
         if not user:
             abort(404)
-        orgs = query_db("SELECT id, name FROM organizations ORDER BY name")
+        # admin can reassign org; manager cannot change org at all
+        orgs = query_db("SELECT id, name FROM organizations ORDER BY name") if current_user.role == 'admin' else []
 
         if request.method == 'POST':
             full_name = request.form.get('full_name', '').strip()
             username = request.form.get('username', '').strip()
             role = request.form.get('role', user['role'])
-            org_id = request.form.get('organization_id', '').strip() or None
+            # manager: org stays fixed; admin: can change
+            if current_user.role == 'admin':
+                org_id = request.form.get('organization_id', '').strip() or None
+            else:
+                org_id = user['organization_id']
             new_password = request.form.get('new_password', '').strip()
 
             if not username or not full_name:
@@ -131,6 +162,77 @@ def register(app):
             return redirect(url_for('users_list'))
 
         return render_template('admin/user_delete.html', user=user, links=links)
+
+    # ═══ Организации ═══
+
+    @app.route('/admin/organizations')
+    @login_required
+    @role_required('admin')
+    def org_list():
+        orgs = query_db(
+            'SELECT o.*, COUNT(u.id) as user_count '
+            'FROM organizations o LEFT JOIN users u ON u.organization_id = o.id '
+            'GROUP BY o.id ORDER BY o.type, o.name')
+        return render_template('admin/organizations.html', orgs=orgs)
+
+    @app.route('/admin/organizations/add', methods=['GET', 'POST'])
+    @login_required
+    @role_required('admin')
+    def org_add():
+        import secrets
+        if request.method == 'POST':
+            name    = request.form.get('name', '').strip()
+            org_type = request.form.get('type', 'developer')
+            if org_type not in ('developer', 'contractor'):
+                org_type = 'developer'
+            if not name:
+                flash('Введите название организации.', 'danger')
+                return render_template('admin/org_add.html')
+            # generate unique join_code
+            for _ in range(10):
+                code = secrets.token_urlsafe(6)[:8].upper()
+                if not query_db('SELECT 1 FROM organizations WHERE join_code = ?', (code,), one=True):
+                    break
+            execute_db(
+                "INSERT INTO organizations (name, type, join_code, status) VALUES (?, ?, ?, 'active')",
+                (name, org_type, code)
+            )
+            org = query_db('SELECT id FROM organizations WHERE join_code = ?', (code,), one=True)
+            flash(
+                f'Организация «{name}» создана. Код для регистрации: <strong>{code}</strong>. '
+                'Передайте его сотрудникам.',
+                'success'
+            )
+            return redirect(url_for('org_list'))
+        return render_template('admin/org_add.html')
+
+    @app.route('/admin/organizations/<int:org_id>/toggle', methods=['POST'])
+    @login_required
+    @role_required('admin')
+    def org_toggle(org_id):
+        org = query_db('SELECT status FROM organizations WHERE id = ?', (org_id,), one=True)
+        if not org:
+            abort(404)
+        new_status = 'inactive' if org['status'] == 'active' else 'active'
+        execute_db('UPDATE organizations SET status = ? WHERE id = ?', (new_status, org_id))
+        flash('Статус организации изменён.', 'success')
+        return redirect(url_for('org_list'))
+
+    @app.route('/admin/organizations/<int:org_id>/regen_code', methods=['POST'])
+    @login_required
+    @role_required('admin')
+    def org_regen_code(org_id):
+        import secrets
+        org = query_db('SELECT id FROM organizations WHERE id = ?', (org_id,), one=True)
+        if not org:
+            abort(404)
+        for _ in range(10):
+            code = secrets.token_urlsafe(6)[:8].upper()
+            if not query_db('SELECT 1 FROM organizations WHERE join_code = ? AND id != ?', (code, org_id), one=True):
+                break
+        execute_db('UPDATE organizations SET join_code = ? WHERE id = ?', (code, org_id))
+        flash(f'Новый код организации: <strong>{code}</strong>', 'success')
+        return redirect(url_for('org_list'))
 
 
 def _get_user_links(user_id):

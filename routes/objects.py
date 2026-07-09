@@ -4,7 +4,8 @@ from flask_login import login_required, current_user
 
 import config
 from db import query_db, execute_db, get_db, notify
-from helpers import role_required, save_stage_document, save_substage_photo, save_plan_file
+from helpers import role_required, accessible_object_ids, assert_object_access, \
+    get_object_team, TEAM_ROLES, save_stage_document, save_substage_photo, save_plan_file
 
 VIEWERS = ('manager', 'admin', 'pto', 'inspector', 'foreman')
 EDITORS = ('manager', 'admin')
@@ -175,12 +176,16 @@ def register(app):
     @role_required(*VIEWERS)
     def objects_list():
         status = request.args.get('status', 'active')
-        objects = query_db(
-            'SELECT o.*, u.full_name as creator_name '
-            'FROM objects o LEFT JOIN users u ON o.created_by = u.id '
-            'WHERE o.status = ? ORDER BY o.created_at DESC',
-            (status,),
-        )
+        ids = accessible_object_ids(current_user)
+        if not ids:
+            objects = []
+        else:
+            objects = query_db(
+                'SELECT o.*, u.full_name as creator_name '
+                'FROM objects o LEFT JOIN users u ON o.created_by = u.id '
+                'WHERE o.status = ? AND o.id = ANY(?) ORDER BY o.created_at DESC',
+                (status, ids),
+            )
         return render_template('objects/list.html', objects=objects, status=status)
 
     @app.route('/objects/add', methods=['GET', 'POST'])
@@ -199,10 +204,11 @@ def register(app):
                 flash('Введите название объекта.', 'danger')
                 return render_template('objects/form.html', obj=None)
 
+            developer_id = current_user.organization_id if current_user.role in ('manager', 'pto', 'inspector', 'foreman', 'supply', 'accountant') else None
             execute_db(
-                'INSERT INTO objects (name, address, type, construction_name, construction_address, cadastral_number, created_by) '
-                'VALUES (?, ?, ?, ?, ?, ?, ?)',
-                (name, address, obj_type, construction_name, construction_address, cadastral_number, current_user.id),
+                'INSERT INTO objects (name, address, type, construction_name, construction_address, cadastral_number, created_by, developer_id) '
+                'VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+                (name, address, obj_type, construction_name, construction_address, cadastral_number, current_user.id, developer_id),
             )
             flash('Объект создан.', 'success')
             return redirect(url_for('objects_list'))
@@ -216,6 +222,7 @@ def register(app):
         obj = query_db('SELECT o.*, u.full_name as creator_name FROM objects o LEFT JOIN users u ON o.created_by = u.id WHERE o.id = ?', (obj_id,), one=True)
         if not obj:
             abort(404)
+        assert_object_access(current_user, obj_id)
         stages = query_db(
             'SELECT cs.*, org.name as contractor_name '
             'FROM construction_stages cs '
@@ -263,11 +270,28 @@ def register(app):
 
         plans = query_db('SELECT * FROM object_plans WHERE object_id=? ORDER BY sort_order, id', (obj_id,))
 
+        team = get_object_team(obj_id)
+        # Пользователи тенанта для назначения в команду
+        tenant_users = {}
+        if current_user.role in ('manager', 'admin'):
+            dev_id = obj.get('developer_id') or (current_user.organization_id if current_user.role != 'admin' else None)
+            for role_key, _ in TEAM_ROLES:
+                if dev_id:
+                    users = query_db(
+                        "SELECT id, full_name FROM users WHERE role = ? AND organization_id = ? AND is_approved = 1 ORDER BY full_name",
+                        (role_key, dev_id))
+                else:
+                    users = query_db(
+                        "SELECT id, full_name FROM users WHERE role = ? AND is_approved = 1 ORDER BY full_name",
+                        (role_key,))
+                tenant_users[role_key] = list(users)
+
         return render_template('objects/detail.html', obj=obj, stages=stages_list,
                                progress=progress, total_subs=total_subs, total_done=total_done,
                                defects_open=defects_open, defects_closed=defects_closed,
                                packages_active=packages_active, mr_active=mr_active,
-                               guest_token=guest_token, plans=plans)
+                               guest_token=guest_token, plans=plans,
+                               team=team, tenant_users=tenant_users, team_roles=TEAM_ROLES)
 
     @app.route('/objects/<int:obj_id>/edit', methods=['GET', 'POST'])
     @login_required
@@ -276,6 +300,7 @@ def register(app):
         obj = query_db('SELECT * FROM objects WHERE id = ?', (obj_id,), one=True)
         if not obj:
             abort(404)
+        assert_object_access(current_user, obj_id)
 
         if request.method == 'POST':
             name = request.form.get('name', '').strip()
@@ -305,6 +330,7 @@ def register(app):
         obj = query_db('SELECT * FROM objects WHERE id = ?', (obj_id,), one=True)
         if not obj:
             abort(404)
+        assert_object_access(current_user, obj_id)
         new_status = 'active' if obj['status'] == 'archived' else 'archived'
         execute_db('UPDATE objects SET status = ? WHERE id = ?', (new_status, obj_id))
         label = 'восстановлен' if new_status == 'active' else 'архивирован'
@@ -318,6 +344,7 @@ def register(app):
         obj = query_db('SELECT * FROM objects WHERE id = ?', (obj_id,), one=True)
         if not obj:
             abort(404)
+        assert_object_access(current_user, obj_id)
         db = get_db()
         db.execute('DELETE FROM objects WHERE id = ?', (obj_id,))
         db.commit()
@@ -335,6 +362,7 @@ def register(app):
         obj = query_db('SELECT id FROM objects WHERE id = ?', (obj_id,), one=True)
         if not obj:
             abort(404)
+        assert_object_access(current_user, obj_id)
         file = request.files.get('file')
         title = request.form.get('title', '').strip()
         level_label = request.form.get('level_label', '').strip()
@@ -368,6 +396,7 @@ def register(app):
         plan = query_db('SELECT * FROM object_plans WHERE id=? AND object_id=?', (plan_id, obj_id), one=True)
         if not plan:
             abort(404)
+        assert_object_access(current_user, obj_id)
         filepath = os.path.join(config.PLANS_FOLDER, str(obj_id), plan['filename'])
         if os.path.exists(filepath):
             os.remove(filepath)
@@ -375,6 +404,79 @@ def register(app):
         execute_db('DELETE FROM object_plans WHERE id=?', (plan_id,))
         flash('План удалён.', 'success')
         return redirect(url_for('object_detail', obj_id=obj_id, tab='plans'))
+
+    # ═══ Команда объекта ═══
+
+    @app.route('/objects/<int:obj_id>/team/assign', methods=['POST'])
+    @login_required
+    @role_required('manager', 'admin')
+    def object_team_assign(obj_id):
+        obj = query_db('SELECT * FROM objects WHERE id = ?', (obj_id,), one=True)
+        if not obj:
+            abort(404)
+        assert_object_access(current_user, obj_id)
+        role = request.form.get('role', '').strip()
+        user_id = request.form.get('user_id', '').strip()
+        valid_roles = [r for r, _ in TEAM_ROLES]
+        if role not in valid_roles:
+            flash('Неверная роль.', 'danger')
+            return redirect(url_for('object_detail', obj_id=obj_id) + '#team')
+        db = get_db()
+        if not user_id:
+            # Удалить из команды
+            db.execute('DELETE FROM object_team WHERE object_id = ? AND role = ?', (obj_id, role))
+            db.commit()
+            flash('Участник убран из команды.', 'success')
+            return redirect(url_for('object_detail', obj_id=obj_id) + '#team')
+        uid = int(user_id)
+        # Проверяем принадлежность пользователя тенанту
+        dev_id = obj.get('developer_id')
+        if dev_id:
+            u = query_db('SELECT id FROM users WHERE id = ? AND organization_id = ? AND is_approved = 1',
+                         (uid, dev_id), one=True)
+        else:
+            u = query_db('SELECT id FROM users WHERE id = ? AND is_approved = 1', (uid,), one=True)
+        if not u:
+            flash('Пользователь не найден или не в вашей организации.', 'danger')
+            return redirect(url_for('object_detail', obj_id=obj_id) + '#team')
+        # Upsert
+        existing = query_db('SELECT id FROM object_team WHERE object_id = ? AND role = ?',
+                            (obj_id, role), one=True)
+        if existing:
+            old_user_id = query_db('SELECT user_id FROM object_team WHERE object_id = ? AND role = ?',
+                                   (obj_id, role), one=True)['user_id']
+            db.execute('UPDATE object_team SET user_id = ? WHERE object_id = ? AND role = ?',
+                       (uid, obj_id, role))
+            # Переназначить pending-шаги КС этого объекта
+            ks_pkg_ids = [r['id'] for r in query_db(
+                'SELECT dp.id FROM doc_packages dp '
+                'JOIN substages ss ON dp.substage_id = ss.id '
+                'JOIN construction_stages cs ON ss.stage_id = cs.id '
+                'WHERE cs.object_id = ?', (obj_id,))]
+            if ks_pkg_ids:
+                db.execute(
+                    'UPDATE approval_steps SET approver_id = ? '
+                    'WHERE approver_id = ? AND status = ? AND role = ? '
+                    'AND package_id = ANY(?)',
+                    (uid, old_user_id, 'pending', role, ks_pkg_ids))
+            # Переназначить pending-шаги ИД этого объекта
+            id_pkg_ids = [r['id'] for r in query_db(
+                'SELECT ip.id FROM id_packages ip '
+                'JOIN construction_stages cs ON ip.stage_id = cs.id '
+                'WHERE cs.object_id = ?', (obj_id,))]
+            if id_pkg_ids:
+                db.execute(
+                    'UPDATE id_approval_steps SET approver_id = ? '
+                    'WHERE approver_id = ? AND status = ? AND role = ? '
+                    'AND package_id = ANY(?)',
+                    (uid, old_user_id, 'pending', role, id_pkg_ids))
+        else:
+            db.execute(
+                'INSERT INTO object_team (object_id, role, user_id) VALUES (?, ?, ?)',
+                (obj_id, role, uid))
+        db.commit()
+        flash('Команда обновлена.', 'success')
+        return redirect(url_for('object_detail', obj_id=obj_id) + '#team')
 
     # ═══ Этапы строительства ═══
 

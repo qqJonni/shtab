@@ -9,7 +9,7 @@
           <div class="text-center mb-4">
             <div class="auth-logo-icon"><i class="bi bi-building"></i></div>
             <h4 class="fw-bold mb-1">Регистрация</h4>
-            <p class="text-muted mb-0">Создайте аккаунт</p>
+            <p class="text-muted mb-0">Введите код, полученный от администратора вашей организации</p>
           </div>
           {% with msgs = get_flashed_messages(with_categories=true) %}
             {% for cat, msg in msgs %}
@@ -18,36 +18,30 @@
           {% endwith %}
           <form method="post">
             <div class="mb-3">
-              <label class="form-label">ФИО</label>
-              <input type="text" name="full_name" class="form-control" required>
+              <label class="form-label">ФИО <span class="text-danger">*</span></label>
+              <input type="text" name="full_name" class="form-control" placeholder="Иванов Иван Иванович" required>
             </div>
             <div class="mb-3">
-              <label class="form-label">Логин</label>
-              <input type="text" name="username" class="form-control" required>
+              <label class="form-label">Логин <span class="text-danger">*</span></label>
+              <input type="text" name="username" class="form-control" autocomplete="username" required>
             </div>
             <div class="mb-3">
-              <label class="form-label">Пароль</label>
-              <input type="password" name="password" class="form-control" required>
+              <label class="form-label">Пароль <span class="text-danger">*</span></label>
+              <input type="password" name="password" class="form-control" autocomplete="new-password" required>
             </div>
             <div class="mb-3">
-              <label class="form-label">Роль</label>
-              <select name="role" class="form-select" required>
-                <option value="">Выберите роль</option>
-                {% for code in SELF_REGISTER_ROLES %}
-                  <option value="{{ code }}">{{ ROLES[code] }}</option>
-                {% endfor %}
-              </select>
+              <label class="form-label">E-mail <span class="text-muted" style="font-size:12px">(необязательно)</span></label>
+              <input type="email" name="email" class="form-control" placeholder="mail@example.com">
             </div>
             <div class="mb-4">
-              <label class="form-label">Организация (для подрядчика)</label>
-              <select name="organization_id" class="form-select">
-                <option value="">— не выбрана —</option>
-                {% for org in orgs %}
-                  <option value="{{ org.id }}">{{ org.name }}</option>
-                {% endfor %}
-              </select>
+              <label class="form-label">Код организации <span class="text-danger">*</span></label>
+              <input type="text" name="join_code" class="form-control text-uppercase"
+                     maxlength="8" placeholder="XXXXXXXX"
+                     style="letter-spacing:0.15em;font-weight:600"
+                     oninput="this.value=this.value.toUpperCase()" required>
+              <div class="form-text">Уточните код у вашего администратора или руководителя.</div>
             </div>
-            <button type="submit" class="btn btn-primary w-100">Зарегистрироваться</button>
+            <button type="submit" class="btn btn-primary w-100">Отправить заявку</button>
           </form>
           <div class="text-center mt-3">
             <a href="{{ url_for('login') }}" class="text-decoration-none" style="font-size:14px">Уже есть аккаунт? Войти</a>

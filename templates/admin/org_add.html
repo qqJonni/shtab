@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+{% block title %}Новая организация — ШТАБ{% endblock %}
+{% block topbar_title %}Новая организация{% endblock %}
+{% block content %}
+<div class="row justify-content-center">
+  <div class="col-md-6 col-lg-5">
+    <div class="card">
+      <div class="card-body p-4">
+        <h5 class="fw-bold mb-4">Добавить организацию</h5>
+        {% with msgs = get_flashed_messages(with_categories=true) %}
+          {% for cat, msg in msgs %}
+            <div class="alert alert-{{ cat }} py-2">{{ msg|safe }}</div>
+          {% endfor %}
+        {% endwith %}
+        <form method="post">
+          <div class="mb-3">
+            <label class="form-label">Название <span class="text-danger">*</span></label>
+            <input type="text" name="name" class="form-control" placeholder="ГК Федерация" required>
+          </div>
+          <div class="mb-4">
+            <label class="form-label">Тип</label>
+            <select name="type" class="form-select">
+              <option value="developer">Заказчик (девелопер)</option>
+              <option value="contractor">Подрядчик</option>
+            </select>
+          </div>
+          <div class="d-flex gap-2">
+            <button type="submit" class="btn btn-primary">Создать</button>
+            <a href="{{ url_for('org_list') }}" class="btn btn-outline-secondary">Отмена</a>
+          </div>
+        </form>
+        <div class="mt-3 p-3 rounded-3" style="background:#F0FDF4;border:1px solid #BBF7D0;font-size:13px">
+          <i class="bi bi-info-circle me-1 text-success"></i>
+          После создания будет автоматически сгенерирован <strong>код регистрации</strong>.
+          Передайте его сотрудникам — они введут его при регистрации и автоматически привяжутся к организации.
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

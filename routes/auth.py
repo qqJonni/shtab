@@ -37,36 +37,40 @@ def register(app):
         if current_user.is_authenticated:
             return redirect(url_for('dashboard'))
 
-        orgs = query_db("SELECT id, name FROM organizations WHERE type = 'contractor' ORDER BY name")
-
         if request.method == 'POST':
-            username = request.form.get('username', '').strip()
-            password = request.form.get('password', '')
+            username  = request.form.get('username', '').strip()
+            password  = request.form.get('password', '')
             full_name = request.form.get('full_name', '').strip()
-            role = request.form.get('role', '')
-            org_id = request.form.get('organization_id') or None
+            email     = request.form.get('email', '').strip() or None
+            join_code = request.form.get('join_code', '').strip().upper()
 
-            if not username or not password or not full_name:
+            if not username or not password or not full_name or not join_code:
                 flash('Заполните все обязательные поля.', 'danger')
-                return render_template('auth/register.html', orgs=orgs)
+                return render_template('auth/register.html')
 
-            if role not in config.SELF_REGISTER_ROLES:
-                flash('Недопустимая роль.', 'danger')
-                return render_template('auth/register.html', orgs=orgs)
+            org = query_db('SELECT id, name FROM organizations WHERE join_code = ? AND status = ?',
+                           (join_code, 'active'), one=True)
+            if not org:
+                flash('Код организации не найден или организация неактивна. Уточните у администратора.', 'danger')
+                return render_template('auth/register.html')
 
             if query_db('SELECT id FROM users WHERE username = ?', (username,), one=True):
                 flash('Пользователь с таким логином уже существует.', 'danger')
-                return render_template('auth/register.html', orgs=orgs)
+                return render_template('auth/register.html')
 
             execute_db(
-                'INSERT INTO users (username, password_hash, role, full_name, is_approved, organization_id) '
-                'VALUES (?, ?, ?, ?, 0, ?)',
-                (username, generate_password_hash(password), role, full_name, org_id),
+                'INSERT INTO users (username, password_hash, role, full_name, is_approved, organization_id, email) '
+                'VALUES (?, ?, ?, ?, 0, ?, ?)',
+                (username, generate_password_hash(password), 'pending', full_name, org['id'], email),
             )
-            flash('Регистрация отправлена. Дождитесь подтверждения администратором.', 'success')
+            flash(
+                f'Заявка отправлена. Вы привязаны к организации «{org["name"]}». '
+                'Дождитесь подтверждения и назначения роли администратором.',
+                'success'
+            )
             return redirect(url_for('login'))
 
-        return render_template('auth/register.html', orgs=orgs)
+        return render_template('auth/register.html')
 
     @app.route('/logout')
     @login_required

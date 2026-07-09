@@ -530,6 +530,16 @@ def init_db():
         )
     ''')
 
+    cur.execute('''
+        CREATE TABLE IF NOT EXISTS object_team (
+            id         SERIAL PRIMARY KEY,
+            object_id  INTEGER NOT NULL REFERENCES objects(id) ON DELETE CASCADE,
+            role       TEXT NOT NULL,
+            user_id    INTEGER NOT NULL REFERENCES users(id),
+            UNIQUE(object_id, role)
+        )
+    ''')
+
     conn.commit()
     cur.close()
 
@@ -688,6 +698,29 @@ def run_migrations(conn):
     for col, typedef in [('work_type', 'TEXT'), ('contractor_id', 'INTEGER')]:
         if not _col_exists('journal_entries', col):
             cur.execute(f'ALTER TABLE journal_entries ADD COLUMN {col} {typedef}')
+
+    # Мультитенантность: тенант объекта
+    if not _col_exists('objects', 'developer_id'):
+        cur.execute('ALTER TABLE objects ADD COLUMN developer_id INTEGER REFERENCES organizations(id)')
+
+    # Мультитенантность: код приглашения и статус организации
+    if not _col_exists('organizations', 'join_code'):
+        cur.execute('ALTER TABLE organizations ADD COLUMN join_code TEXT')
+        cur.execute('CREATE UNIQUE INDEX IF NOT EXISTS uq_org_join_code ON organizations(join_code) WHERE join_code IS NOT NULL')
+    if not _col_exists('organizations', 'status'):
+        cur.execute("ALTER TABLE organizations ADD COLUMN status TEXT NOT NULL DEFAULT 'active'")
+
+    # Генерируем join_code для организаций, у которых его нет
+    import secrets
+    cur.execute('SELECT id FROM organizations WHERE join_code IS NULL')
+    orgs_without_code = cur.fetchall()
+    for (org_id,) in orgs_without_code:
+        for _ in range(10):
+            code = secrets.token_urlsafe(6)[:8].upper()
+            cur.execute('SELECT 1 FROM organizations WHERE join_code = %s', (code,))
+            if not cur.fetchone():
+                cur.execute('UPDATE organizations SET join_code = %s WHERE id = %s', (code, org_id))
+                break
 
     # Настройка НДС (идемпотентно)
     cur.execute(

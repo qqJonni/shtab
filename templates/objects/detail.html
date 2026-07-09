@@ -214,5 +214,49 @@
 {% endif %}
 
 {% endif %}{# end tab stages #}
+
+{% if current_user.role in ('manager', 'admin') %}
+{# ═══ Команда объекта ═══ #}
+<div id="team" class="card mt-4">
+  <div class="card-body p-4">
+    <h5 class="fw-bold mb-3"><i class="bi bi-people me-2"></i>Команда объекта</h5>
+    <div class="row g-3">
+      {% for role_key, role_label in team_roles %}
+      {% set member = team.get(role_key) %}
+      {% set candidates = tenant_users.get(role_key, []) %}
+      <div class="col-sm-6 col-md-4">
+        <div class="p-3 rounded-3" style="background:#F5F6FA;border:1px solid #E2E8F0">
+          <div class="fw-medium mb-1" style="font-size:13px;color:#64748B">{{ role_label }}</div>
+          {% if member %}
+            <div class="d-flex align-items-center gap-2 mb-2">
+              <span class="badge badge-done">{{ member.full_name }}</span>
+            </div>
+          {% else %}
+            <div class="text-muted mb-2" style="font-size:13px">Не назначен</div>
+          {% endif %}
+          {% if candidates %}
+          <form method="post" action="{{ url_for('object_team_assign', obj_id=obj.id) }}">
+            <input type="hidden" name="role" value="{{ role_key }}">
+            <div class="d-flex gap-2">
+              <select name="user_id" class="form-select form-select-sm">
+                <option value="">— убрать —</option>
+                {% for u in candidates %}
+                  <option value="{{ u.id }}"{% if member and member.id == u.id %} selected{% endif %}>{{ u.full_name }}</option>
+                {% endfor %}
+              </select>
+              <button type="submit" class="btn btn-sm btn-primary px-3">OK</button>
+            </div>
+          </form>
+          {% else %}
+            <div class="text-muted" style="font-size:12px"><i class="bi bi-info-circle me-1"></i>Нет пользователей с ролью «{{ role_label }}»</div>
+          {% endif %}
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+</div>
+{% endif %}
+
 {% endblock %}
 

@@ -6,7 +6,7 @@ from flask_login import login_required, current_user
 
 import config
 from db import query_db, execute_db, get_db
-from helpers import role_required, save_journal_photo
+from helpers import role_required, assert_object_access, save_journal_photo
 from doc_generator import _fmt_date
 
 VIEWERS = ('manager', 'admin', 'pto', 'inspector', 'foreman')
@@ -22,6 +22,7 @@ def register(app):
         obj = query_db('SELECT * FROM objects WHERE id = ?', (obj_id,), one=True)
         if not obj:
             abort(404)
+        assert_object_access(current_user, obj_id)
         entries = query_db(
             'SELECT je.*, u.full_name as author_name, u.role as author_role, '
             'org.name as contractor_name '
@@ -44,6 +45,7 @@ def register(app):
         obj = query_db('SELECT * FROM objects WHERE id = ?', (obj_id,), one=True)
         if not obj:
             abort(404)
+        assert_object_access(current_user, obj_id)
 
         contractors = query_db("SELECT id, name FROM organizations WHERE type='contractor' ORDER BY name")
 
