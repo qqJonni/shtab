@@ -208,5 +208,61 @@ id_approval_steps  — шаги цепочки (package_id, step_order, role, st
 
 ---
 
+---
+
+## Модуль «Мультитенантность» — влит в main (ветка multitenancy)
+
+### Что сделано (Шаги 2–7, проверка 55/56 OK)
+
+Полная изоляция тенантов: каждый застройщик (developer-org) видит только свои объекты, пакеты, замечания, пользователей. Подрядчик — межтенантный кейс, видит этапы у всех застройщиков где назначен.
+
+### Ключевые механизмы
+
+**Anchor изоляции:** `objects.developer_id → organizations(id)` — всё дочернее наследует принадлежность через объект.
+
+**helpers.py:**
+- `accessible_object_ids(user)` — admin→все; contractor→объекты где их org в этапах; остальные→объекты своей org
+- `assert_object_access(user, object_id)` — abort(403) при попытке обратиться к чужому объекту
+- `TEAM_ROLES` / `get_object_team(object_id)` — команда объекта по ролям
+
+**Регистрация (Шаг 5):**
+- Только по `join_code` организации, без самовыбора роли (`role='pending'`, `is_approved=0`)
+- Апрув admin/manager с назначением роли; manager видит и апрувит только своих (tenant-scope)
+- `_assert_same_tenant()` в admin.py блокирует действия над пользователями чужого тенанта
+
+**Команда объекта (Шаг 4):**
+- Таблица `object_team(object_id, role, user_id UNIQUE(object_id,role))`
+- При отправке пакета КС/ИД: `approver_id` берётся из `object_team` (не «любой с ролью»)
+- Видимость пакетов: `approver_id=me OR (approver_id IS NULL AND role=me.role)` (обратная совместимость)
+- Валидация полноты команды перед отправкой; смена участника → переназначение pending-шагов
+- Снабжение: notify конкретного pto/supply из команды объекта
+
+**Создание тенанта (admin):**
+- `/admin/organizations` → создать org → автогенерируется `join_code` (8 симв.)
+- Показывается в таблице; можно пересгенерировать или деактивировать (старый код перестаёт принимать регистрации)
+
+### Новые таблицы / колонки
+```sql
+organizations.join_code TEXT UNIQUE      -- код для регистрации
+organizations.status TEXT DEFAULT 'active'
+objects.developer_id → organizations(id) -- anchor тенанта
+object_team(id, object_id, role, user_id, UNIQUE(object_id,role))
+approval_steps.approver_id               -- конкретный пользователь
+id_approval_steps.approver_id
+```
+
+### Инструменты разработчика
+```bash
+python3 seed_multitenant_test.py         # создать 2 тенанта + подрядчика
+python3 seed_multitenant_test.py --wipe  # очистить (маркер [SEED])
+python3 test_isolation.py                # прогнать чек-лист (55 проверок)
+```
+
+### Проверка при деплое
+После `init_db()` выполнить `python3 test_isolation.py` — должно быть 0 FAIL.
+Колонка `approver_id` добавляется миграцией в `run_migrations()` — идемпотентно.
+
+---
+
 ## Рабочий процесс
 Модулями (0–6, см. мастер-спецификацию). Для каждого — отдельное ТЗ с критериями приёмки, шаги по одному, после шага — самопроверка. Перед стартом модуля — `git checkout -b <модуль>`.
