@@ -12,16 +12,36 @@ def register(app):
     @login_required
     @role_required('admin', 'manager')
     def users_list():
-        users = query_db(
-            'SELECT u.*, o.name as org_name FROM users u '
-            'LEFT JOIN organizations o ON u.organization_id = o.id '
-            'ORDER BY u.is_approved, u.created_at DESC')
+        if current_user.role == 'manager':
+            # manager sees only users from their own tenant org
+            users = query_db(
+                'SELECT u.*, o.name as org_name FROM users u '
+                'LEFT JOIN organizations o ON u.organization_id = o.id '
+                'WHERE u.organization_id = ? '
+                'ORDER BY u.is_approved, u.created_at DESC',
+                (current_user.organization_id,))
+        else:
+            users = query_db(
+                'SELECT u.*, o.name as org_name FROM users u '
+                'LEFT JOIN organizations o ON u.organization_id = o.id '
+                'ORDER BY u.is_approved, u.created_at DESC')
         return render_template('admin/users.html', users=users)
+
+    def _assert_same_tenant(user_id):
+        """Returns the user row if current manager can act on them, else aborts 403."""
+        target = query_db('SELECT * FROM users WHERE id = ?', (user_id,), one=True)
+        if not target:
+            abort(404)
+        if current_user.role == 'manager':
+            if target['organization_id'] != current_user.organization_id:
+                abort(403)
+        return target
 
     @app.route('/admin/users/<int:user_id>/approve', methods=['POST'])
     @login_required
     @role_required('admin', 'manager')
     def user_approve(user_id):
+        _assert_same_tenant(user_id)
         role = request.form.get('role', '').strip()
         assignable = [r for r in config.ROLES if r not in ('admin', 'guest')]
         if role not in assignable:
@@ -35,8 +55,8 @@ def register(app):
     @login_required
     @role_required('admin', 'manager')
     def user_block(user_id):
-        user = query_db('SELECT role FROM users WHERE id = ?', (user_id,), one=True)
-        if user and user['role'] == 'admin':
+        user = _assert_same_tenant(user_id)
+        if user['role'] == 'admin':
             flash('Нельзя заблокировать администратора.', 'danger')
             return redirect(url_for('users_list'))
         execute_db('UPDATE users SET is_approved = 0 WHERE id = ?', (user_id,))
@@ -59,19 +79,25 @@ def register(app):
     @login_required
     @role_required('admin', 'manager')
     def user_edit(user_id):
+        _assert_same_tenant(user_id)
         user = query_db(
             'SELECT u.*, o.name as org_name FROM users u '
             'LEFT JOIN organizations o ON u.organization_id = o.id WHERE u.id = ?',
             (user_id,), one=True)
         if not user:
             abort(404)
-        orgs = query_db("SELECT id, name FROM organizations ORDER BY name")
+        # admin can reassign org; manager cannot change org at all
+        orgs = query_db("SELECT id, name FROM organizations ORDER BY name") if current_user.role == 'admin' else []
 
         if request.method == 'POST':
             full_name = request.form.get('full_name', '').strip()
             username = request.form.get('username', '').strip()
             role = request.form.get('role', user['role'])
-            org_id = request.form.get('organization_id', '').strip() or None
+            # manager: org stays fixed; admin: can change
+            if current_user.role == 'admin':
+                org_id = request.form.get('organization_id', '').strip() or None
+            else:
+                org_id = user['organization_id']
             new_password = request.form.get('new_password', '').strip()
 
             if not username or not full_name:
