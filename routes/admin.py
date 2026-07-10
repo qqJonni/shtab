@@ -157,7 +157,7 @@ def register(app):
 
     @app.route('/admin/users/<int:user_id>/delete', methods=['GET', 'POST'])
     @login_required
-    @role_required('admin')
+    @role_required('admin', 'manager')
     def user_delete(user_id):
         if user_id == current_user.id:
             flash('Нельзя удалить самого себя.', 'danger')
@@ -165,6 +165,13 @@ def register(app):
         user = query_db('SELECT u.*, o.name as org_name FROM users u LEFT JOIN organizations o ON u.organization_id=o.id WHERE u.id=?', (user_id,), one=True)
         if not user:
             abort(404)
+        # manager удаляет только пользователей СВОЕЙ организации (не подрядных)
+        if current_user.role == 'manager':
+            if user['organization_id'] != current_user.organization_id:
+                abort(403)
+        if user['role'] == 'admin':
+            flash('Нельзя удалить администратора.', 'danger')
+            return redirect(url_for('users_list'))
 
         links = _get_user_links(user_id)
 
