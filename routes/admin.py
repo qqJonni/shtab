@@ -105,6 +105,10 @@ def register(app):
     @role_required('admin', 'manager')
     def user_edit(user_id):
         _, is_own_org = _assert_same_tenant(user_id)
+        # manager может редактировать данные (ФИО/логин/пароль) только своих;
+        # пользователей подрядных организаций — лишь подтверждать/блокировать
+        if current_user.role == 'manager' and not is_own_org:
+            abort(403)
         user = query_db(
             'SELECT u.*, o.name as org_name FROM users u '
             'LEFT JOIN organizations o ON u.organization_id = o.id WHERE u.id = ?',
@@ -137,9 +141,6 @@ def register(app):
 
             if role not in config.ROLES:
                 role = user['role']
-            # manager editing a linked contractor-org user: role stays contractor
-            if current_user.role == 'manager' and not is_own_org:
-                role = 'contractor'
 
             db = get_db()
             db.execute('UPDATE users SET full_name=?, username=?, role=?, organization_id=? WHERE id=?',
