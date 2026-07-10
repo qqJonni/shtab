@@ -84,6 +84,16 @@ def create_app():
         from datetime import date
         return {'now_date': date.today().isoformat()}
 
+    @app.context_processor
+    def inject_static_version():
+        # cache-busting для crm.css: версия = mtime файла
+        css_path = os.path.join(app.static_folder, 'css', 'crm.css')
+        try:
+            v = int(os.path.getmtime(css_path))
+        except OSError:
+            v = 0
+        return {'static_version': v}
+
     @app.errorhandler(403)
     def forbidden(e):
         return render_template('errors/403.html'), 403
@@ -147,6 +157,7 @@ def init_db():
             password_hash TEXT NOT NULL,
             role TEXT NOT NULL,
             full_name TEXT,
+            email TEXT,
             avatar TEXT,
             is_approved INTEGER DEFAULT 0,
             organization_id INTEGER REFERENCES organizations(id),
@@ -698,6 +709,14 @@ def run_migrations(conn):
     for col, typedef in [('work_type', 'TEXT'), ('contractor_id', 'INTEGER')]:
         if not _col_exists('journal_entries', col):
             cur.execute(f'ALTER TABLE journal_entries ADD COLUMN {col} {typedef}')
+
+    # Онбординг: email пользователя (опциональный, при регистрации по коду)
+    if not _col_exists('users', 'email'):
+        cur.execute('ALTER TABLE users ADD COLUMN email TEXT')
+
+    # Онбординг подрядчиков: какой тенант завёл организацию
+    if not _col_exists('organizations', 'created_by_org'):
+        cur.execute('ALTER TABLE organizations ADD COLUMN created_by_org INTEGER REFERENCES organizations(id)')
 
     # Мультитенантность: тенант объекта
     if not _col_exists('objects', 'developer_id'):

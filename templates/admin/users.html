@@ -52,14 +52,21 @@
               <a href="{{ url_for('user_edit', user_id=u.id) }}" class="btn btn-sm btn-outline-primary py-0 px-2" title="Редактировать"><i class="bi bi-pencil"></i></a>
               {% if not u.is_approved %}
                 <form method="post" action="{{ url_for('user_approve', user_id=u.id) }}" class="d-inline-flex gap-1 align-items-center">
-                  <select name="role" class="form-select form-select-sm" style="width:auto;font-size:12px" required>
-                    <option value="">— роль —</option>
-                    {% for code, label in ROLES.items() %}
-                      {% if code not in ('admin', 'guest') %}
-                        <option value="{{ code }}">{{ label }}</option>
-                      {% endif %}
-                    {% endfor %}
-                  </select>
+                  {% if current_user.role == 'manager' and u.organization_id != current_user.organization_id %}
+                    {# пользователь подрядной организации — только роль «Подрядчик» #}
+                    <select name="role" class="form-select form-select-sm" style="width:auto;font-size:12px" required>
+                      <option value="contractor" selected>{{ ROLES['contractor'] }}</option>
+                    </select>
+                  {% else %}
+                    <select name="role" class="form-select form-select-sm" style="width:auto;font-size:12px" required>
+                      <option value="">— роль —</option>
+                      {% for code, label in ROLES.items() %}
+                        {% if code not in ('admin', 'guest') %}
+                          <option value="{{ code }}">{{ label }}</option>
+                        {% endif %}
+                      {% endfor %}
+                    </select>
+                  {% endif %}
                   <button class="btn btn-sm btn-success py-0 px-2" title="Подтвердить"><i class="bi bi-check-lg"></i></button>
                 </form>
               {% elif u.role != 'admin' %}

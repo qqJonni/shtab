@@ -8,18 +8,30 @@ from helpers import role_required
 
 def register(app):
 
+    def _linked_contractor_org_ids(tenant_org_id):
+        """Contractor orgs linked to the tenant: created by it OR working on its objects."""
+        rows = query_db(
+            "SELECT id FROM organizations WHERE type = 'contractor' AND created_by_org = ? "
+            "UNION "
+            "SELECT DISTINCT cs.contractor_id FROM construction_stages cs "
+            "JOIN objects ob ON cs.object_id = ob.id "
+            "WHERE ob.developer_id = ? AND cs.contractor_id IS NOT NULL",
+            (tenant_org_id, tenant_org_id))
+        return [r['id'] for r in rows]
+
     @app.route('/admin/users')
     @login_required
     @role_required('admin', 'manager')
     def users_list():
         if current_user.role == 'manager':
-            # manager sees only users from their own tenant org
+            # manager sees users of their own org + users of linked contractor orgs
+            org_ids = [current_user.organization_id] + _linked_contractor_org_ids(current_user.organization_id)
             users = query_db(
                 'SELECT u.*, o.name as org_name FROM users u '
                 'LEFT JOIN organizations o ON u.organization_id = o.id '
-                'WHERE u.organization_id = ? '
+                'WHERE u.organization_id = ANY(?) '
                 'ORDER BY u.is_approved, u.created_at DESC',
-                (current_user.organization_id,))
+                (org_ids,))
         else:
             users = query_db(
                 'SELECT u.*, o.name as org_name FROM users u '
@@ -28,24 +40,37 @@ def register(app):
         return render_template('admin/users.html', users=users)
 
     def _assert_same_tenant(user_id):
-        """Returns the user row if current manager can act on them, else aborts 403."""
+        """Returns (user_row, is_own_org). Aborts 403 if manager cannot act on the user.
+
+        Manager can act on users of their own org, and on users of linked
+        contractor orgs (created by the tenant or working on its objects)."""
         target = query_db('SELECT * FROM users WHERE id = ?', (user_id,), one=True)
         if not target:
             abort(404)
-        if current_user.role == 'manager':
-            if target['organization_id'] != current_user.organization_id:
-                abort(403)
-        return target
+        if current_user.role != 'manager':
+            return target, True
+        if target['organization_id'] == current_user.organization_id:
+            return target, True
+        if target['organization_id'] in _linked_contractor_org_ids(current_user.organization_id):
+            return target, False
+        abort(403)
 
     @app.route('/admin/users/<int:user_id>/approve', methods=['POST'])
     @login_required
     @role_required('admin', 'manager')
     def user_approve(user_id):
-        _assert_same_tenant(user_id)
+        target, is_own_org = _assert_same_tenant(user_id)
         role = request.form.get('role', '').strip()
-        assignable = [r for r in config.ROLES if r not in ('admin', 'guest')]
+        if is_own_org:
+            assignable = [r for r in config.ROLES if r not in ('admin', 'guest')]
+        else:
+            # users of linked contractor orgs can only be approved as contractor
+            assignable = ['contractor']
         if role not in assignable:
-            flash('Выберите роль перед подтверждением.', 'danger')
+            if not is_own_org:
+                flash('Пользователю подрядной организации можно назначить только роль «Подрядчик».', 'danger')
+            else:
+                flash('Выберите роль перед подтверждением.', 'danger')
             return redirect(url_for('users_list'))
         execute_db('UPDATE users SET is_approved = 1, role = ? WHERE id = ?', (role, user_id))
         flash('Пользователь подтверждён и роль назначена.', 'success')
@@ -55,7 +80,7 @@ def register(app):
     @login_required
     @role_required('admin', 'manager')
     def user_block(user_id):
-        user = _assert_same_tenant(user_id)
+        user, _ = _assert_same_tenant(user_id)
         if user['role'] == 'admin':
             flash('Нельзя заблокировать администратора.', 'danger')
             return redirect(url_for('users_list'))
@@ -79,7 +104,7 @@ def register(app):
     @login_required
     @role_required('admin', 'manager')
     def user_edit(user_id):
-        _assert_same_tenant(user_id)
+        _, is_own_org = _assert_same_tenant(user_id)
         user = query_db(
             'SELECT u.*, o.name as org_name FROM users u '
             'LEFT JOIN organizations o ON u.organization_id = o.id WHERE u.id = ?',
@@ -112,6 +137,9 @@ def register(app):
 
             if role not in config.ROLES:
                 role = user['role']
+            # manager editing a linked contractor-org user: role stays contractor
+            if current_user.role == 'manager' and not is_own_org:
+                role = 'contractor'
 
             db = get_db()
             db.execute('UPDATE users SET full_name=?, username=?, role=?, organization_id=? WHERE id=?',
@@ -156,6 +184,16 @@ def register(app):
             db.execute('UPDATE material_request_history SET user_id = 1 WHERE user_id = ?', (user_id,))
             db.execute('UPDATE approval_steps SET approver_id = NULL WHERE approver_id = ?', (user_id,))
             db.execute('UPDATE guest_tokens SET created_by = NULL WHERE created_by = ?', (user_id,))
+            db.execute('DELETE FROM object_team WHERE user_id = ?', (user_id,))
+            db.execute('DELETE FROM push_subscriptions WHERE user_id = ?', (user_id,))
+            db.execute('UPDATE id_approval_steps SET approver_id = NULL WHERE approver_id = ?', (user_id,))
+            db.execute('UPDATE id_checklist_items SET created_by = NULL WHERE created_by = ?', (user_id,))
+            db.execute('UPDATE id_documents SET uploaded_by = NULL WHERE uploaded_by = ?', (user_id,))
+            db.execute('UPDATE id_packages SET created_by = 1 WHERE created_by = ?', (user_id,))
+            db.execute('UPDATE journal_entries SET author_id = 1 WHERE author_id = ?', (user_id,))
+            db.execute('UPDATE defect_audio SET uploaded_by = NULL WHERE uploaded_by = ?', (user_id,))
+            db.execute('UPDATE object_plans SET uploaded_by = NULL WHERE uploaded_by = ?', (user_id,))
+            db.execute('UPDATE smeta_imports SET uploaded_by = NULL WHERE uploaded_by = ?', (user_id,))
             db.execute('DELETE FROM users WHERE id = ?', (user_id,))
             db.commit()
             flash(f'Пользователь «{user["username"]}» удалён. Связи откреплены.', 'success')
@@ -281,5 +319,13 @@ def _get_user_links(user_id):
     cnt = query_db('SELECT COUNT(*) as c FROM guest_tokens WHERE created_by=?', (user_id,), one=True)['c']
     if cnt:
         links.append({'icon': 'bi-link-45deg', 'label': 'Гостевые ссылки', 'count': cnt, 'action': 'Открепить'})
+
+    cnt = query_db('SELECT COUNT(*) as c FROM object_team WHERE user_id=?', (user_id,), one=True)['c']
+    if cnt:
+        links.append({'icon': 'bi-people-fill', 'label': 'Команды объектов', 'count': cnt, 'action': 'Будут удалены'})
+
+    cnt = query_db('SELECT COUNT(*) as c FROM id_approval_steps WHERE approver_id=?', (user_id,), one=True)['c']
+    if cnt:
+        links.append({'icon': 'bi-file-earmark-check', 'label': 'Согласования ИД', 'count': cnt, 'action': 'Открепить'})
 
     return links

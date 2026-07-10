@@ -681,3 +681,6 @@ h5, h6 { color: var(--text-main); }
   h4.fw-bold { font-size: 18px; }
   .auth-card { border-radius: 12px; }
 }
+
+/* Утилита: позволяет flex-детям сжиматься, чтобы работал text-truncate */
+.min-width-0 { min-width: 0; }

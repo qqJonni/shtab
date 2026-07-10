@@ -15,6 +15,7 @@
           <th>Тип</th>
           <th>ИНН</th>
           <th>Представитель</th>
+          <th>Код регистрации</th>
           <th class="text-end">Действия</th>
         </tr>
       </thead>
@@ -25,6 +26,7 @@
           <td>{% if o.type == 'developer' %}<span class="badge badge-progress">Заказчик</span>{% else %}<span class="badge badge-pending">Подрядчик</span>{% endif %}</td>
           <td class="text-muted" style="font-size:13px">{{ o.inn or '—' }}</td>
           <td style="font-size:13px">{{ o.rep_name or '—' }}</td>
+          <td><span class="fw-semibold" style="letter-spacing:0.12em;font-size:13px">{{ o.join_code or '—' }}</span></td>
           <td class="text-end">
             <div class="d-inline-flex gap-1">
               <a href="{{ url_for('organization_edit', org_id=o.id) }}" class="btn btn-sm btn-outline-primary py-0 px-1"><i class="bi bi-pencil"></i></a>

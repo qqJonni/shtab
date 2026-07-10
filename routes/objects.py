@@ -78,10 +78,20 @@ def register(app):
             if org_type not in ('developer', 'contractor'):
                 org_type = 'contractor'
 
+            import secrets
+            join_code = None
+            for _ in range(10):
+                code = secrets.token_urlsafe(6)[:8].upper()
+                if not query_db('SELECT 1 FROM organizations WHERE join_code = ?', (code,), one=True):
+                    join_code = code
+                    break
+
+            created_by_org = current_user.organization_id if current_user.role == 'manager' else None
+
             db = get_db()
             cur = db.execute(
-                'INSERT INTO organizations (name, type, inn, kpp, address, ogrn, okpo, phone, email, rep_position, rep_name) '
-                'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+                'INSERT INTO organizations (name, type, inn, kpp, address, ogrn, okpo, phone, email, rep_position, rep_name, join_code, status, created_by_org) '
+                'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
                 (name, org_type,
                  request.form.get('inn', '').strip(),
                  request.form.get('kpp', '').strip(),
@@ -91,7 +101,8 @@ def register(app):
                  request.form.get('phone', '').strip(),
                  request.form.get('email', '').strip(),
                  request.form.get('rep_position', '').strip(),
-                 request.form.get('rep_name', '').strip()))
+                 request.form.get('rep_name', '').strip(),
+                 join_code, 'active', created_by_org))
             org_id = cur.lastrowid
 
             linked = request.form.getlist('contractor_ids')
@@ -100,7 +111,7 @@ def register(app):
                            (org_id, int(uid), 'contractor'))
             db.commit()
 
-            flash(f'Организация «{name}» создана.', 'success')
+            flash(f'Организация «{name}» создана. Код для регистрации сотрудников: {join_code}', 'success')
             return redirect(url_for('organizations_list'))
 
         return render_template('organizations/add.html', contractors=contractors)
@@ -154,6 +165,15 @@ def register(app):
         cnt = query_db('SELECT COUNT(*) as c FROM material_requests WHERE contractor_id=?', (org_id,), one=True)['c']
         if cnt:
             links.append({'icon': 'bi-box-seam', 'label': 'Заявки на материал', 'count': cnt, 'action': 'Открепить'})
+        cnt = query_db('SELECT COUNT(*) as c FROM id_packages WHERE contractor_id=?', (org_id,), one=True)['c']
+        if cnt:
+            links.append({'icon': 'bi-file-earmark-check', 'label': 'Пакеты ИД', 'count': cnt, 'action': 'Открепить'})
+        cnt = query_db('SELECT COUNT(*) as c FROM journal_entries WHERE contractor_id=?', (org_id,), one=True)['c']
+        if cnt:
+            links.append({'icon': 'bi-journal-text', 'label': 'Записи журнала', 'count': cnt, 'action': 'Открепить'})
+        cnt = query_db('SELECT COUNT(*) as c FROM objects WHERE developer_id=?', (org_id,), one=True)['c']
+        if cnt:
+            links.append({'icon': 'bi-building', 'label': 'Объекты (застройщик)', 'count': cnt, 'action': 'Открепить'})
 
         if request.method == 'POST':
             db = get_db()
@@ -162,6 +182,9 @@ def register(app):
             db.execute('UPDATE defects SET contractor_id = NULL WHERE contractor_id = ?', (org_id,))
             db.execute('UPDATE doc_packages SET contractor_id = NULL WHERE contractor_id = ?', (org_id,))
             db.execute('UPDATE material_requests SET contractor_id = NULL WHERE contractor_id = ?', (org_id,))
+            db.execute('UPDATE id_packages SET contractor_id = NULL WHERE contractor_id = ?', (org_id,))
+            db.execute('UPDATE journal_entries SET contractor_id = NULL WHERE contractor_id = ?', (org_id,))
+            db.execute('UPDATE objects SET developer_id = NULL WHERE developer_id = ?', (org_id,))
             db.execute('DELETE FROM organizations WHERE id = ?', (org_id,))
             db.commit()
             flash(f'Организация «{org["name"]}» удалена. Связи откреплены.', 'success')
