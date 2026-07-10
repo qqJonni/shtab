@@ -2,8 +2,10 @@
 Автоматический тест изоляции мультитенантности.
 Запускается против реальной БД (PostgreSQL).
 """
+import os
 import sys
-sys.path.insert(0, '/Users/valeriy/Desktop/shtab')
+PROJECT_DIR = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, PROJECT_DIR)
 
 import psycopg2
 import config
@@ -338,8 +340,8 @@ check("_assert_same_tenant: alpha_manager → beta_user → 403",
 print("\n═══ 10. init_db() идемпотентность ═══")
 import subprocess
 result = subprocess.run(
-    ['python3', '-c', 'from app import init_db; init_db()'],
-    capture_output=True, text=True, cwd='/Users/valeriy/Desktop/shtab')
+    [sys.executable, '-c', 'from app import init_db; init_db()'],
+    capture_output=True, text=True, cwd=PROJECT_DIR)
 check("init_db() повторный запуск без ошибок",
       result.returncode == 0,
       result.stderr[:300] if result.stderr else '')

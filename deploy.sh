@@ -1,38 +1,39 @@
 #!/bin/bash
-# Деплой Web Push уведомлений
+# Деплой ШТАБ на прод (shtab-crm.ru)
+# Использование: ./deploy.sh
+# Требует настроенный ssh-доступ root@shtab-crm.ru (или sshpass в SSHPASS)
 set -e
 
-SERVER="root@159.194.206.104"
+SERVER="root@shtab-crm.ru"
 DIR="/var/www/shtab"
 
-# VAPID-ключи читаются из локального .env, чтобы не хранить секреты в скрипте
-VAPID_PRIVATE_KEY=$(grep '^VAPID_PRIVATE_KEY=' .env | cut -d= -f2-)
-VAPID_PUBLIC_KEY=$(grep '^VAPID_PUBLIC_KEY=' .env | cut -d= -f2-)
-VAPID_EMAIL=$(grep '^VAPID_EMAIL=' .env | cut -d= -f2-)
+SSH="ssh $SERVER"
+if [ -n "${SSHPASS:-}" ]; then
+  SSH="sshpass -e ssh $SERVER"
+fi
 
-echo "=== 1. Пуллим код ==="
-ssh $SERVER "cd $DIR && git pull"
+echo "=== 1. Бэкап БД ==="
+$SSH "PGPASSWORD=\$(grep -oP 'postgresql://shtab:\K[^@]+' $DIR/.env) \
+  pg_dump -h localhost -U shtab shtab > /var/backups/shtab/shtab_before_deploy_\$(date +%Y%m%d_%H%M%S).sql && \
+  ls -t /var/backups/shtab/*.sql | head -1"
 
-echo "=== 2. Устанавливаем pywebpush ==="
-ssh $SERVER "cd $DIR && source venv/bin/activate && pip install pywebpush==2.0.0"
+echo "=== 2. Пуллим код ==="
+$SSH "cd $DIR && git pull"
 
-echo "=== 3. Добавляем VAPID ключи в .env на сервере ==="
-ssh $SERVER "
-  grep -q VAPID_PRIVATE_KEY $DIR/.env 2>/dev/null || cat >> $DIR/.env << ENVEOF
-VAPID_PRIVATE_KEY=$VAPID_PRIVATE_KEY
-VAPID_PUBLIC_KEY=$VAPID_PUBLIC_KEY
-VAPID_EMAIL=$VAPID_EMAIL
-ENVEOF
-  echo 'VAPID keys OK'
-"
+echo "=== 3. Зависимости ==="
+$SSH "cd $DIR && source venv/bin/activate && pip install -q -r requirements.txt"
 
-echo "=== 4. Миграция БД (создаём таблицу push_subscriptions) ==="
-ssh $SERVER "cd $DIR && source venv/bin/activate && python3 -c 'from app import init_db; init_db()'"
+echo "=== 4. Миграции БД ==="
+$SSH "cd $DIR && source venv/bin/activate && python3 -c 'from app import init_db; init_db()'"
 
-echo "=== 5. Перезапускаем сервис ==="
-ssh $SERVER "systemctl restart shtab && sleep 2 && systemctl is-active shtab"
+echo "=== 5. Права на загрузки (git pull под root создаёт каталоги root'ом) ==="
+$SSH "chown -R shtab:shtab $DIR/static"
 
-echo "=== Готово! Проверяем ==="
-curl -s https://shtab-crm.ru/api/push/vapid-public-key
-echo ""
+echo "=== 6. Рестарт сервиса ==="
+$SSH "systemctl restart shtab && sleep 3 && systemctl is-active shtab"
+
+echo "=== 7. Проверка ==="
+curl -s -o /dev/null -w "https://shtab-crm.ru → %{http_code}\n" https://shtab-crm.ru/
+$SSH "cd $DIR && git log --oneline -1"
+
 echo "Деплой успешен!"
