@@ -11,15 +11,17 @@
   <a href="{{ url_for('packages_list', tab='archive') }}" class="btn btn-sm {% if tab == 'archive' %}btn-primary{% else %}btn-outline-secondary{% endif %}">Архив</a>
 </div>
 
+<h5 class="fw-bold mb-2" style="font-size:15px">Пакеты КС (закрытие работ)</h5>
+
 {% if not pkgs %}
-  <div class="card">
-    <div class="card-body text-center py-5 text-muted">
-      <i class="bi bi-folder" style="font-size:48px;opacity:.3"></i>
-      <p class="mt-3 mb-0">Пакетов пока нет.</p>
+  <div class="card mb-4">
+    <div class="card-body text-center py-4 text-muted">
+      <i class="bi bi-folder" style="font-size:36px;opacity:.3"></i>
+      <p class="mt-2 mb-0" style="font-size:14px">Пакетов КС пока нет.</p>
     </div>
   </div>
 {% else %}
-  <div class="card">
+  <div class="card mb-4">
     <div class="table-responsive">
       <table class="table table-hover mb-0">
         <thead>
@@ -71,6 +73,62 @@
               {% endif %}
             </td>
             {% endif %}
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+{% endif %}
+
+{# ═══ Пакеты ИД (исполнительная документация) ═══ #}
+<h5 class="fw-bold mb-2" style="font-size:15px">Пакеты ИД (исполнительная документация)</h5>
+
+{% if not id_pkgs %}
+  <div class="card">
+    <div class="card-body text-center py-4 text-muted">
+      <i class="bi bi-file-earmark-check" style="font-size:36px;opacity:.3"></i>
+      <p class="mt-2 mb-0" style="font-size:14px">Пакетов ИД пока нет.</p>
+    </div>
+  </div>
+{% else %}
+  <div class="card">
+    <div class="table-responsive">
+      <table class="table table-hover mb-0">
+        <thead>
+          <tr>
+            <th style="width:40px">#</th>
+            <th>Этап</th>
+            <th>Объект</th>
+            {% if current_user.role != 'contractor' %}<th>Подрядчик</th>{% endif %}
+            <th>Статус</th>
+            <th>Отправлен</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for p in id_pkgs %}
+          <tr {% if p.id in id_my_pending %}style="background:rgba(59,130,246,0.04)"{% endif %}>
+            <td class="text-muted">{{ p.id }}</td>
+            <td>
+              <a href="{{ url_for('id_package_detail', pkg_id=p.id) }}" class="fw-medium text-decoration-none" style="color:var(--text-main)">
+                {{ p.stage_name }}
+              </a>
+              {% if p.id in id_my_pending %}
+                <span class="badge badge-progress ms-1" style="font-size:10px">Ваша очередь</span>
+              {% endif %}
+            </td>
+            <td style="font-size:13px">{{ p.object_name }}</td>
+            {% if current_user.role != 'contractor' %}
+              <td style="font-size:13px">{{ p.contractor_name or '—' }}</td>
+            {% endif %}
+            <td>
+              {% if p.status == 'draft' %}<span class="badge badge-pending">Черновик</span>
+              {% elif p.status == 'in_review' %}<span class="badge badge-progress">На согласовании</span>
+              {% elif p.status == 'returned' %}<span class="badge badge-rework">Возвращён</span>
+              {% elif p.status == 'accepted' %}<span class="badge badge-done">Принят</span>
+              {% endif %}
+            </td>
+            <td class="text-muted" style="font-size:13px;white-space:nowrap">{{ p.submitted_at[:10] if p.submitted_at else '—' }}</td>
           </tr>
           {% endfor %}
         </tbody>

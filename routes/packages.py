@@ -648,9 +648,52 @@ def register(app):
                 (current_user.id, current_user.role))
             my_pending = [r['package_id'] for r in my_pending]
 
+        # ═══ Пакеты ИД (исполнительная документация) ═══
+        id_base = (
+            'SELECT ip.*, cs.name as stage_name, o.name as object_name, '
+            'org.name as contractor_name '
+            'FROM id_packages ip '
+            'JOIN construction_stages cs ON ip.stage_id = cs.id '
+            'JOIN objects o ON cs.object_id = o.id '
+            'LEFT JOIN organizations org ON ip.contractor_id = org.id ')
+        id_chain_roles = dict(config.ID_APPROVAL_CHAIN)
+        id_pkgs = []
+        if current_user.role == 'contractor':
+            if tab == 'archive':
+                id_pkgs = query_db(id_base + "WHERE ip.contractor_id = ? AND ip.status = 'accepted' "
+                                   "ORDER BY ip.id DESC", (current_user.organization_id,))
+            else:
+                id_pkgs = query_db(id_base + "WHERE ip.contractor_id = ? AND ip.status != 'accepted' "
+                                   "ORDER BY ip.id DESC", (current_user.organization_id,))
+        elif current_user.role in ('manager', 'admin'):
+            if tab == 'archive':
+                id_pkgs = query_db(id_base + "WHERE ip.status = 'accepted' ORDER BY ip.id DESC")
+            else:
+                id_pkgs = query_db(id_base + "WHERE ip.status != 'accepted' ORDER BY ip.id DESC")
+        elif current_user.role in id_chain_roles:
+            if tab == 'archive':
+                id_pkgs = query_db(id_base + "WHERE ip.status = 'accepted' ORDER BY ip.id DESC")
+            else:
+                id_pkgs = query_db(
+                    id_base + 'JOIN id_approval_steps a ON a.package_id = ip.id '
+                    "WHERE (a.approver_id = ? OR (a.approver_id IS NULL AND a.role = ?)) "
+                    "AND a.status = 'pending' AND ip.status = 'in_review' "
+                    'ORDER BY ip.id DESC',
+                    (current_user.id, current_user.role))
+
+        # manager видит все ИД в статусе in_review, но «Ваша очередь» — только где его pending-шаг
+        id_my_pending = []
+        if current_user.role in id_chain_roles:
+            rows = query_db(
+                "SELECT a.package_id FROM id_approval_steps a "
+                "WHERE (a.approver_id = ? OR (a.approver_id IS NULL AND a.role = ?)) AND a.status = 'pending'",
+                (current_user.id, current_user.role))
+            id_my_pending = [r['package_id'] for r in rows]
+
         return render_template('packages/list.html', pkgs=pkgs,
                                status_labels=PACKAGE_STATUS_LABELS,
-                               my_pending=my_pending, tab=tab)
+                               my_pending=my_pending, tab=tab,
+                               id_pkgs=id_pkgs, id_my_pending=id_my_pending)
 
     # ═══ Согласование / возврат ═══
 
