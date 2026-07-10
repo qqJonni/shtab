@@ -179,7 +179,7 @@ def register(app):
             subs = query_db('SELECT status, plan_end_date FROM substages WHERE stage_id = ?', (s['id'],))
             cnt = len(subs)
             s['sub_total'] = cnt
-            s['sub_done'] = sum(1 for sub in subs if sub['status'] == 'done')
+            s['sub_done'] = sum(1 for sub in subs if sub['status'] in ('done', 'closed', 'approved'))
             s['sub_in_progress'] = sum(1 for sub in subs if sub['status'] == 'in_progress')
             s['sub_not_started'] = sum(1 for sub in subs if sub['status'] == 'not_started')
             s['sub_overdue'] = sum(1 for sub in subs if sub['plan_end_date'] and sub['plan_end_date'] < today and sub['status'] not in ('done', 'closed', 'approved'))
@@ -319,7 +319,7 @@ def register(app):
         for s in stages_list:
             subs = query_db('SELECT status, plan_end_date FROM substages WHERE stage_id = ?', (s['id'],))
             s['sub_total'] = len(subs)
-            s['sub_done'] = sum(1 for sub in subs if sub['status'] == 'done')
+            s['sub_done'] = sum(1 for sub in subs if sub['status'] in ('done', 'closed', 'approved'))
             s_overdue = sum(1 for sub in subs if sub['plan_end_date'] and sub['plan_end_date'] < today and sub['status'] not in ('done', 'closed', 'approved'))
             substages_overdue += s_overdue
         # Defect counts for contractor

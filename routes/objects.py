@@ -715,7 +715,7 @@ def register(app):
         for s in stages_list:
             subs = query_db('SELECT status FROM substages WHERE stage_id = ?', (s['id'],))
             s['sub_total'] = len(subs)
-            s['sub_done'] = sum(1 for sub in subs if sub['status'] == 'done')
+            s['sub_done'] = sum(1 for sub in subs if sub['status'] in ('done', 'closed', 'approved'))
         return render_template('objects/my_stages.html', stages=stages_list)
 
     # ═══ Страница этапа и документы ═══
