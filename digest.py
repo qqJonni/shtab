@@ -217,11 +217,12 @@ def object_digest(obj_id: int, period_days: int = 7) -> dict:
 
     # Зависшие пакеты — список с ролью, которая держит, и числом дней
     stalled_pkgs_raw = query_db(
-        "SELECT dp.id, dp.submitted_at, dp.status, ss.name as substage_name, "
+        "SELECT dp.id, dp.submitted_at, dp.status, "
+        "(SELECT ss.name FROM package_items pi JOIN substages ss ON pi.substage_id = ss.id "
+        " WHERE pi.package_id = dp.id ORDER BY pi.id LIMIT 1) as substage_name, "
         "a.role as pending_role "
         "FROM doc_packages dp "
-        "JOIN substages ss ON dp.substage_id = ss.id "
-        "JOIN construction_stages cs ON ss.stage_id = cs.id "
+        "JOIN construction_stages cs ON dp.stage_id = cs.id "
         "JOIN approval_steps a ON a.package_id = dp.id "
         "WHERE cs.object_id = ? AND dp.status = 'in_review' "
         "AND a.status = 'pending' "
@@ -237,33 +238,31 @@ def object_digest(obj_id: int, period_days: int = 7) -> dict:
 
     # Возвращённые подрядчику
     returned_pkgs = query_db(
-        "SELECT dp.id, dp.created_at, ss.name as substage_name, "
+        "SELECT dp.id, dp.created_at, "
+        "(SELECT ss.name FROM package_items pi JOIN substages ss ON pi.substage_id = ss.id "
+        " WHERE pi.package_id = dp.id ORDER BY pi.id LIMIT 1) as substage_name, "
         "cs.name as stage_name "
         "FROM doc_packages dp "
-        "JOIN substages ss ON dp.substage_id = ss.id "
-        "JOIN construction_stages cs ON ss.stage_id = cs.id "
+        "JOIN construction_stages cs ON dp.stage_id = cs.id "
         "WHERE cs.object_id = ? AND dp.status = 'returned' "
         "ORDER BY dp.created_at DESC",
         (obj_id,))
 
     pkgs_in_review = query_db(
         "SELECT COUNT(*) as c FROM doc_packages dp "
-        "JOIN substages ss ON dp.substage_id = ss.id "
-        "JOIN construction_stages cs ON ss.stage_id = cs.id "
+        "JOIN construction_stages cs ON dp.stage_id = cs.id "
         "WHERE cs.object_id = ? AND dp.status = 'in_review'",
         (obj_id,), one=True)['c']
 
     pkgs_completed = query_db(
         "SELECT COUNT(*) as c FROM doc_packages dp "
-        "JOIN substages ss ON dp.substage_id = ss.id "
-        "JOIN construction_stages cs ON ss.stage_id = cs.id "
+        "JOIN construction_stages cs ON dp.stage_id = cs.id "
         "WHERE cs.object_id = ? AND dp.status = 'completed'",
         (obj_id,), one=True)['c']
 
     pkgs_completed_week = query_db(
         "SELECT COUNT(*) as c FROM doc_packages dp "
-        "JOIN substages ss ON dp.substage_id = ss.id "
-        "JOIN construction_stages cs ON ss.stage_id = cs.id "
+        "JOIN construction_stages cs ON dp.stage_id = cs.id "
         "WHERE cs.object_id = ? AND dp.status = 'completed' "
         "AND dp.completed_at >= ?",
         (obj_id, since), one=True)['c']
@@ -273,8 +272,7 @@ def object_digest(obj_id: int, period_days: int = 7) -> dict:
         "SELECT a.role, COUNT(*) as c "
         "FROM approval_steps a "
         "JOIN doc_packages dp ON a.package_id = dp.id "
-        "JOIN substages ss ON dp.substage_id = ss.id "
-        "JOIN construction_stages cs ON ss.stage_id = cs.id "
+        "JOIN construction_stages cs ON dp.stage_id = cs.id "
         "WHERE cs.object_id = ? AND dp.status = 'in_review' "
         "AND a.status = 'pending' "
         "GROUP BY a.role ORDER BY c DESC",

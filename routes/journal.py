@@ -163,11 +163,11 @@ def register(app):
         defects_open = query_db("SELECT COUNT(*) as c FROM defects WHERE object_id=? AND status NOT IN ('closed','verified')", (obj_id,), one=True)['c']
         defects_closed = query_db("SELECT COUNT(*) as c FROM defects WHERE object_id=? AND status IN ('closed','verified')", (obj_id,), one=True)['c']
         pkgs_review = query_db(
-            "SELECT COUNT(*) as c FROM doc_packages dp JOIN substages ss ON dp.substage_id=ss.id "
-            "JOIN construction_stages cs ON ss.stage_id=cs.id WHERE cs.object_id=? AND dp.status='in_review'", (obj_id,), one=True)['c']
+            "SELECT COUNT(*) as c FROM doc_packages dp "
+            "JOIN construction_stages cs ON dp.stage_id=cs.id WHERE cs.object_id=? AND dp.status='in_review'", (obj_id,), one=True)['c']
         pkgs_completed = query_db(
-            "SELECT COUNT(*) as c FROM doc_packages dp JOIN substages ss ON dp.substage_id=ss.id "
-            "JOIN construction_stages cs ON ss.stage_id=cs.id WHERE cs.object_id=? AND dp.status='completed'", (obj_id,), one=True)['c']
+            "SELECT COUNT(*) as c FROM doc_packages dp "
+            "JOIN construction_stages cs ON dp.stage_id=cs.id WHERE cs.object_id=? AND dp.status='completed'", (obj_id,), one=True)['c']
         mr_active = query_db(
             "SELECT COUNT(*) as c FROM material_requests mr JOIN construction_stages cs ON mr.stage_id=cs.id "
             "WHERE cs.object_id=? AND mr.status NOT IN ('completed')", (obj_id,), one=True)['c']

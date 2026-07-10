@@ -46,7 +46,7 @@ def _check_replace_allowed(stage_id: int) -> dict | None:
 
     # Пакеты документов (КС-2, КС-3...)
     pkg_row = query_db(
-        f'SELECT COUNT(*) as cnt FROM doc_packages WHERE substage_id IN ({placeholders})',
+        f'SELECT COUNT(DISTINCT package_id) as cnt FROM package_items WHERE substage_id IN ({placeholders})',
         sub_ids, one=True,
     )
     packages = pkg_row['cnt'] if pkg_row else 0

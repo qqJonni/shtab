@@ -25,17 +25,87 @@ PACKAGE_STATUS_LABELS = {
 
 
 def _get_package_full(package_id):
-    return query_db(
-        'SELECT dp.*, ss.name as substage_name, ss.stage_id, '
-        'cs.name as stage_name, cs.contractor_id, o.name as object_name, o.id as object_id, '
+    row = query_db(
+        'SELECT dp.*, cs.name as stage_name, cs.contractor_id as stage_contractor_id, '
+        'o.name as object_name, o.id as object_id, '
         'org.name as contractor_name, u.full_name as creator_name '
         'FROM doc_packages dp '
-        'JOIN substages ss ON dp.substage_id = ss.id '
-        'JOIN construction_stages cs ON ss.stage_id = cs.id '
+        'JOIN construction_stages cs ON dp.stage_id = cs.id '
         'JOIN objects o ON cs.object_id = o.id '
         'LEFT JOIN organizations org ON dp.contractor_id = org.id '
         'LEFT JOIN users u ON dp.created_by = u.id '
         'WHERE dp.id = ?', (package_id,), one=True)
+    if not row:
+        return None
+    pkg = dict(row)
+    items = _get_package_items(package_id)
+    pkg['items'] = items
+    pkg['items_total'] = sum(float(i['amount'] or 0) for i in items)
+    # substage_name — метка пакета для списков/уведомлений (обратная совместимость шаблонов)
+    if items:
+        label = items[0]['substage_name']
+        if len(items) > 1:
+            label += f' (+{len(items) - 1})'
+    else:
+        label = pkg['stage_name']
+    pkg['substage_name'] = label
+    return pkg
+
+
+def _get_package_items(package_id):
+    return [dict(r) for r in query_db(
+        'SELECT pi.*, ss.name as substage_name, ss.unit, ss.volume as substage_volume, '
+        'ss.status as substage_status '
+        'FROM package_items pi JOIN substages ss ON pi.substage_id = ss.id '
+        'WHERE pi.package_id = ? ORDER BY pi.id', (package_id,))]
+
+
+def _stage_substage_volumes(stage_id, exclude_package_id=None):
+    """Для каждого подэтапа этапа: договорной объём, закрыто (completed-пакеты),
+    зарезервировано (пакеты в работе: draft/in_review/returned) и остаток.
+    qty IS NULL в строке пакета означает «полное закрытие подэтапа»."""
+    subs = [dict(r) for r in query_db(
+        'SELECT * FROM substages WHERE stage_id = ? ORDER BY id', (stage_id,))]
+    ex = exclude_package_id or 0
+    closed_rows = query_db(
+        "SELECT pi.substage_id, "
+        "SUM(CASE WHEN pi.qty IS NULL THEN NULL ELSE pi.qty END) as qty_sum, "
+        "COUNT(*) FILTER (WHERE pi.qty IS NULL) as full_cnt "
+        "FROM package_items pi JOIN doc_packages dp ON pi.package_id = dp.id "
+        "WHERE dp.status = 'completed' AND dp.stage_id = ? AND dp.id != ? "
+        "GROUP BY pi.substage_id", (stage_id, ex))
+    reserved_rows = query_db(
+        "SELECT pi.substage_id, "
+        "SUM(CASE WHEN pi.qty IS NULL THEN NULL ELSE pi.qty END) as qty_sum, "
+        "COUNT(*) FILTER (WHERE pi.qty IS NULL) as full_cnt "
+        "FROM package_items pi JOIN doc_packages dp ON pi.package_id = dp.id "
+        "WHERE dp.status IN ('draft', 'in_review', 'returned') AND dp.stage_id = ? AND dp.id != ? "
+        "GROUP BY pi.substage_id", (stage_id, ex))
+    closed = {r['substage_id']: r for r in closed_rows}
+    reserved = {r['substage_id']: r for r in reserved_rows}
+
+    result = []
+    for s in subs:
+        volume = float(s['volume']) if s['volume'] is not None else None
+        c = closed.get(s['id'])
+        r = reserved.get(s['id'])
+        closed_qty = float(c['qty_sum']) if c and c['qty_sum'] is not None else 0.0
+        reserved_qty = float(r['qty_sum']) if r and r['qty_sum'] is not None else 0.0
+        fully_closed = bool(c and c['full_cnt'])
+        fully_reserved = bool(r and r['full_cnt'])
+        if volume is not None:
+            fully_closed = fully_closed or closed_qty >= volume - 1e-9
+            remaining = max(volume - closed_qty - reserved_qty, 0.0)
+            if fully_closed or fully_reserved:
+                remaining = 0.0
+        else:
+            # без сметного объёма — только полное закрытие
+            remaining = 0.0 if (fully_closed or fully_reserved) else None
+        s.update(closed_qty=closed_qty, reserved_qty=reserved_qty,
+                 fully_closed=fully_closed, fully_reserved=fully_reserved,
+                 remaining=remaining)
+        result.append(s)
+    return result
 
 
 def _can_view_package(pkg):
@@ -52,33 +122,70 @@ def _is_package_contractor(pkg):
 
 def register(app):
 
-    @app.route('/substages/<int:sub_id>/create-package', methods=['POST'])
+    @app.route('/stages/<int:stage_id>/create-package', methods=['GET', 'POST'])
     @login_required
-    def package_create(sub_id):
-        sub = query_db('SELECT * FROM substages WHERE id = ?', (sub_id,), one=True)
-        if not sub:
+    def package_create(stage_id):
+        stage = query_db('SELECT * FROM construction_stages WHERE id = ?', (stage_id,), one=True)
+        if not stage:
             abort(404)
-        stage = query_db('SELECT * FROM construction_stages WHERE id = ?', (sub['stage_id'],), one=True)
-        if not stage or current_user.role != 'contractor' or stage['contractor_id'] != current_user.organization_id:
+        if current_user.role != 'contractor' or stage['contractor_id'] != current_user.organization_id:
             abort(403)
-        if sub['status'] != 'done':
-            flash('Пакет можно создать только для подэтапа со статусом «Выполнен».', 'danger')
-            return redirect(url_for('substage_detail', sub_id=sub_id))
 
-        existing = query_db("SELECT id FROM doc_packages WHERE substage_id = ? AND status NOT IN ('completed')",
-                            (sub_id,), one=True)
-        if existing:
-            flash('Пакет для этого подэтапа уже существует.', 'warning')
-            return redirect(url_for('package_detail', package_id=existing['id']))
+        volumes = _stage_substage_volumes(stage_id)
+        # доступны для включения: есть остаток либо (без объёма) не закрыт
+        available = [s for s in volumes
+                     if (s['remaining'] is None and not s['fully_closed'] and not s['fully_reserved'])
+                     or (s['remaining'] is not None and s['remaining'] > 1e-9)]
 
-        db = get_db()
-        cur = db.execute(
-            'INSERT INTO doc_packages (substage_id, contractor_id, created_by) VALUES (?, ?, ?)',
-            (sub_id, stage['contractor_id'], current_user.id))
-        package_id = cur.lastrowid
-        db.commit()
-        flash('Пакет документов создан. Добавьте документы и отправьте на согласование.', 'success')
-        return redirect(url_for('package_detail', package_id=package_id))
+        if request.method == 'POST':
+            items = []   # (substage_id, qty|None, unit_price, amount)
+            errors = []
+            for s in available:
+                sid = s['id']
+                if s['volume'] is None:
+                    # без сметного объёма — чекбокс полного закрытия
+                    if request.form.get(f'full_{sid}'):
+                        items.append((sid, None, s['unit_price'], s['total_price']))
+                    continue
+                raw = request.form.get(f'qty_{sid}', '').strip().replace(',', '.').replace(' ', '')
+                if not raw:
+                    continue
+                try:
+                    qty = float(raw)
+                except ValueError:
+                    errors.append(f'«{s["name"]}»: некорректное число')
+                    continue
+                if qty <= 0:
+                    continue
+                if qty > s['remaining'] + 1e-9:
+                    errors.append(f'«{s["name"]}»: заявлено {qty:g}, доступно {s["remaining"]:g} {s["unit"] or ""}')
+                    continue
+                price = float(s['unit_price']) if s['unit_price'] is not None else 0.0
+                items.append((sid, qty, price, round(qty * price, 2)))
+
+            if errors:
+                for e in errors:
+                    flash(e, 'danger')
+                return render_template('packages/create.html', stage=stage, volumes=volumes)
+            if not items:
+                flash('Укажите объём хотя бы по одному подэтапу.', 'danger')
+                return render_template('packages/create.html', stage=stage, volumes=volumes)
+
+            db = get_db()
+            cur = db.execute(
+                'INSERT INTO doc_packages (stage_id, contractor_id, created_by) VALUES (?, ?, ?)',
+                (stage_id, stage['contractor_id'], current_user.id))
+            package_id = cur.lastrowid
+            for sid, qty, price, amount in items:
+                db.execute(
+                    'INSERT INTO package_items (package_id, substage_id, qty, unit_price, amount) '
+                    'VALUES (?, ?, ?, ?, ?)',
+                    (package_id, sid, qty, price, amount))
+            db.commit()
+            flash('Пакет документов создан. Добавьте документы и отправьте на согласование.', 'success')
+            return redirect(url_for('package_detail', package_id=package_id))
+
+        return render_template('packages/create.html', stage=stage, volumes=volumes)
 
     @app.route('/packages/<int:package_id>')
     @login_required
@@ -207,21 +314,20 @@ def register(app):
             flash('Можно удалить только черновик или возвращённый пакет.', 'danger')
             return redirect(url_for('package_detail', package_id=package_id))
 
-        substage_id = pkg['substage_id']
+        item_sub_ids = [it['substage_id'] for it in _get_package_items(package_id)]
         db = get_db()
         # Удалить файлы документов
-        docs = query_db('SELECT filename FROM package_documents WHERE package_id = ?', (package_id,))
         import shutil
         pkg_folder = os.path.join(config.PACKAGES_FOLDER, str(package_id))
         if os.path.isdir(pkg_folder):
             shutil.rmtree(pkg_folder)
         db.execute('DELETE FROM package_documents WHERE package_id = ?', (package_id,))
         db.execute('DELETE FROM approval_steps WHERE package_id = ?', (package_id,))
+        db.execute('DELETE FROM package_items WHERE package_id = ?', (package_id,))
         db.execute('DELETE FROM doc_packages WHERE id = ?', (package_id,))
-        # Вернуть подэтап в done если был closed
-        sub = query_db('SELECT status FROM substages WHERE id = ?', (substage_id,), one=True)
-        if sub and sub['status'] == 'closed':
-            db.execute("UPDATE substages SET status = 'done' WHERE id = ?", (substage_id,))
+        # Вернуть подэтапы пакета из «closed» в «done»
+        for sid in item_sub_ids:
+            db.execute("UPDATE substages SET status = 'done' WHERE id = ? AND status = 'closed'", (sid,))
         db.commit()
         flash('Пакет документов удалён.', 'success')
         return redirect(url_for('packages_list'))
@@ -245,8 +351,15 @@ def register(app):
         contractor_org = query_db('SELECT * FROM organizations WHERE id = ?',
                                   (pkg['contractor_id'],), one=True) if pkg['contractor_id'] else None
 
-        substage = query_db('SELECT * FROM substages WHERE id = ?', (pkg['substage_id'],), one=True)
-        substages = query_db('SELECT * FROM substages WHERE stage_id = ? ORDER BY id', (pkg['stage_id'],))
+        # Позиции пакета — строки будущего КС-2 (объёмы и цены зафиксированы при подаче)
+        items = _get_package_items(package_id)
+        substages = [
+            {**dict(i), 'name': i['substage_name'],
+             'volume': i['qty'] if i['qty'] is not None else i['substage_volume'],
+             'unit_price': i['unit_price'], 'total_price': i['amount']}
+            for i in items
+        ]
+        substage = substages[0] if substages else {}
 
         from db import get_setting
         vat_rate = get_setting('vat_rate', '20')
@@ -256,8 +369,7 @@ def register(app):
         prev_completed = query_db(
             "SELECT pd.data_json FROM package_documents pd "
             "JOIN doc_packages dp ON pd.package_id = dp.id "
-            "JOIN substages ss ON dp.substage_id = ss.id "
-            "JOIN construction_stages cs ON ss.stage_id = cs.id "
+            "JOIN construction_stages cs ON dp.stage_id = cs.id "
             "WHERE pd.doc_type = 'ks2' AND pd.is_generated = 1 "
             "AND dp.status = 'completed' AND dp.contractor_id = ? AND cs.object_id = ? "
             "AND dp.id != ?",
@@ -376,13 +488,38 @@ def register(app):
                   'Руководитель должен назначить команду на странице объекта.', 'danger')
             return redirect(url_for('package_detail', package_id=package_id))
 
+        # Валидация объёмов: заявленное не должно превышать остаток
+        # (остаток считается без учёта строк самого пакета)
+        volumes = {s['id']: s for s in _stage_substage_volumes(pkg['stage_id'], exclude_package_id=package_id)}
+        items = _get_package_items(package_id)
+        vol_errors = []
+        for it in items:
+            s = volumes.get(it['substage_id'])
+            if not s:
+                continue
+            if it['qty'] is None:
+                if s['fully_closed'] or s['fully_reserved']:
+                    vol_errors.append(f'«{s["name"]}» уже закрыт или закрывается другим пакетом')
+            elif s['remaining'] is not None and float(it['qty']) > s['remaining'] + 1e-9:
+                vol_errors.append(f'«{s["name"]}»: заявлено {float(it["qty"]):g}, доступно {s["remaining"]:g}')
+        if vol_errors:
+            for e in vol_errors:
+                flash(f'Нельзя отправить: {e}.', 'danger')
+            return redirect(url_for('package_detail', package_id=package_id))
+
         db = get_db()
         db.execute(
             "UPDATE doc_packages SET status = 'in_review', submitted_at = CURRENT_TIMESTAMP WHERE id = ?",
             (package_id,))
-        db.execute(
-            "UPDATE substages SET status = 'closed' WHERE id = ?",
-            (pkg['substage_id'],))
+        # Подэтапы, закрываемые полностью этим пакетом и уже выполненные, — в статус «closed»
+        for it in items:
+            s = volumes.get(it['substage_id'])
+            if not s or s['status'] != 'done':
+                continue
+            covers_all = it['qty'] is None or (
+                s['volume'] is not None and s['closed_qty'] + float(it['qty']) >= float(s['volume']) - 1e-9)
+            if covers_all:
+                db.execute("UPDATE substages SET status = 'closed' WHERE id = ?", (it['substage_id'],))
 
         for i, (role, _) in enumerate(config.APPROVAL_CHAIN, 1):
             status = 'pending' if i == 1 else 'waiting'
@@ -454,74 +591,54 @@ def register(app):
     def packages_list():
         tab = request.args.get('tab', 'active')
 
+        base = (
+            'SELECT dp.*, cs.name as stage_name, o.name as object_name, '
+            'org.name as contractor_name, '
+            '(SELECT ss.name FROM package_items pi JOIN substages ss ON pi.substage_id = ss.id '
+            ' WHERE pi.package_id = dp.id ORDER BY pi.id LIMIT 1) as first_item_name, '
+            '(SELECT COUNT(*) FROM package_items pi WHERE pi.package_id = dp.id) as items_count, '
+            '(SELECT COALESCE(SUM(pi.amount), 0) FROM package_items pi WHERE pi.package_id = dp.id) as items_total '
+            'FROM doc_packages dp '
+            'JOIN construction_stages cs ON dp.stage_id = cs.id '
+            'JOIN objects o ON cs.object_id = o.id '
+            'LEFT JOIN organizations org ON dp.contractor_id = org.id ')
+
         if current_user.role == 'contractor':
             if tab == 'archive':
-                pkgs = query_db(
-                    'SELECT dp.*, ss.name as substage_name, cs.name as stage_name, o.name as object_name '
-                    'FROM doc_packages dp '
-                    'JOIN substages ss ON dp.substage_id = ss.id '
-                    'JOIN construction_stages cs ON ss.stage_id = cs.id '
-                    'JOIN objects o ON cs.object_id = o.id '
-                    "WHERE dp.contractor_id = ? AND dp.status = 'completed' ORDER BY dp.completed_at DESC",
-                    (current_user.organization_id,))
+                pkgs = query_db(base + "WHERE dp.contractor_id = ? AND dp.status = 'completed' "
+                                "ORDER BY dp.completed_at DESC", (current_user.organization_id,))
             else:
-                pkgs = query_db(
-                    'SELECT dp.*, ss.name as substage_name, cs.name as stage_name, o.name as object_name '
-                    'FROM doc_packages dp '
-                    'JOIN substages ss ON dp.substage_id = ss.id '
-                    'JOIN construction_stages cs ON ss.stage_id = cs.id '
-                    'JOIN objects o ON cs.object_id = o.id '
-                    "WHERE dp.contractor_id = ? AND dp.status != 'completed' ORDER BY dp.created_at DESC",
-                    (current_user.organization_id,))
+                pkgs = query_db(base + "WHERE dp.contractor_id = ? AND dp.status != 'completed' "
+                                "ORDER BY dp.created_at DESC", (current_user.organization_id,))
         elif current_user.role in ('manager', 'admin'):
             if tab == 'archive':
-                pkgs = query_db(
-                    'SELECT dp.*, ss.name as substage_name, cs.name as stage_name, o.name as object_name, '
-                    'org.name as contractor_name '
-                    'FROM doc_packages dp '
-                    'JOIN substages ss ON dp.substage_id = ss.id '
-                    'JOIN construction_stages cs ON ss.stage_id = cs.id '
-                    'JOIN objects o ON cs.object_id = o.id '
-                    'LEFT JOIN organizations org ON dp.contractor_id = org.id '
-                    "WHERE dp.status = 'completed' ORDER BY dp.completed_at DESC")
+                pkgs = query_db(base + "WHERE dp.status = 'completed' ORDER BY dp.completed_at DESC")
             else:
-                pkgs = query_db(
-                    'SELECT dp.*, ss.name as substage_name, cs.name as stage_name, o.name as object_name, '
-                    'org.name as contractor_name '
-                    'FROM doc_packages dp '
-                    'JOIN substages ss ON dp.substage_id = ss.id '
-                    'JOIN construction_stages cs ON ss.stage_id = cs.id '
-                    'JOIN objects o ON cs.object_id = o.id '
-                    'LEFT JOIN organizations org ON dp.contractor_id = org.id '
-                    "WHERE dp.status != 'completed' ORDER BY dp.created_at DESC")
+                pkgs = query_db(base + "WHERE dp.status != 'completed' ORDER BY dp.created_at DESC")
         elif current_user.role in dict(config.APPROVAL_CHAIN):
             # Согласующие роли: только свои pending (по approver_id или роли) + архив
             if tab == 'archive':
-                pkgs = query_db(
-                    'SELECT dp.*, ss.name as substage_name, cs.name as stage_name, o.name as object_name, '
-                    'org.name as contractor_name '
-                    'FROM doc_packages dp '
-                    'JOIN substages ss ON dp.substage_id = ss.id '
-                    'JOIN construction_stages cs ON ss.stage_id = cs.id '
-                    'JOIN objects o ON cs.object_id = o.id '
-                    'LEFT JOIN organizations org ON dp.contractor_id = org.id '
-                    "WHERE dp.status = 'completed' ORDER BY dp.completed_at DESC")
+                pkgs = query_db(base + "WHERE dp.status = 'completed' ORDER BY dp.completed_at DESC")
             else:
                 pkgs = query_db(
-                    'SELECT dp.*, ss.name as substage_name, cs.name as stage_name, o.name as object_name, '
-                    'org.name as contractor_name '
-                    'FROM doc_packages dp '
-                    'JOIN substages ss ON dp.substage_id = ss.id '
-                    'JOIN construction_stages cs ON ss.stage_id = cs.id '
-                    'JOIN objects o ON cs.object_id = o.id '
-                    'LEFT JOIN organizations org ON dp.contractor_id = org.id '
-                    'JOIN approval_steps a ON a.package_id = dp.id '
+                    base + 'JOIN approval_steps a ON a.package_id = dp.id '
                     "WHERE (a.approver_id = ? OR (a.approver_id IS NULL AND a.role = ?)) "
                     "AND a.status = 'pending' AND dp.status = 'in_review' "
                     'ORDER BY dp.created_at DESC',
                     (current_user.id, current_user.role))
         else:
             abort(403)
+
+        # Метка пакета: первый подэтап (+N)
+        out = []
+        for p in pkgs:
+            p = dict(p)
+            label = p['first_item_name'] or p['stage_name']
+            if (p['items_count'] or 0) > 1:
+                label += f' (+{p["items_count"] - 1})'
+            p['substage_name'] = label
+            out.append(p)
+        pkgs = out
 
         my_pending = []
         if current_user.role in dict(config.APPROVAL_CHAIN):
@@ -591,7 +708,13 @@ def register(app):
             db.execute(
                 "UPDATE doc_packages SET status = 'completed', completed_at = CURRENT_TIMESTAMP WHERE id = ?",
                 (package_id,))
-            db.execute("UPDATE substages SET status = 'approved' WHERE id = ?", (pkg['substage_id'],))
+            db.commit()
+            # Подэтапы, полностью закрытые накопленным объёмом (включая этот пакет), — в «approved»
+            volumes = {s['id']: s for s in _stage_substage_volumes(pkg['stage_id'])}
+            for it in _get_package_items(package_id):
+                s = volumes.get(it['substage_id'])
+                if s and s['fully_closed']:
+                    db.execute("UPDATE substages SET status = 'approved' WHERE id = ?", (it['substage_id'],))
             db.commit()
 
             contractor_users = query_db(

@@ -14,8 +14,7 @@ def _ow(developer_id):
     ss = (' AND stage_id IN (SELECT cs.id FROM construction_stages cs '
           'WHERE cs.object_id IN (SELECT id FROM objects WHERE developer_id = ?))')
     d = (' AND object_id IN (SELECT id FROM objects WHERE developer_id = ?)')
-    p = (' AND substage_id IN (SELECT ss.id FROM substages ss '
-         'JOIN construction_stages cs ON ss.stage_id=cs.id '
+    p = (' AND stage_id IN (SELECT cs.id FROM construction_stages cs '
          'WHERE cs.object_id IN (SELECT id FROM objects WHERE developer_id = ?))')
     mr = (' AND stage_id IN (SELECT id FROM construction_stages '
           'WHERE object_id IN (SELECT id FROM objects WHERE developer_id = ?))')
@@ -85,7 +84,7 @@ def chart_packages_pipeline(developer_id=None):
     rows = query_db(
         f"SELECT a.role, COUNT(*) as c FROM approval_steps a "
         f"JOIN doc_packages dp ON a.package_id = dp.id "
-        f"WHERE dp.status = 'in_review' AND a.status = 'pending'{pw.replace('substage_id', 'dp.substage_id')} GROUP BY a.role",
+        f"WHERE dp.status = 'in_review' AND a.status = 'pending'{pw.replace(' AND stage_id', ' AND dp.stage_id')} GROUP BY a.role",
         a)
     return {r['role']: r['c'] for r in rows}
 
@@ -113,8 +112,7 @@ def objects_summary(developer_id=None):
         o['completed_sum'] = sum(s['total_price'] or 0 for s in subs if s['status'] in ('done', 'closed', 'approved'))
         pkgs = query_db(
             "SELECT COUNT(*) as c FROM doc_packages dp "
-            "JOIN substages ss ON dp.substage_id=ss.id "
-            "JOIN construction_stages cs ON ss.stage_id=cs.id "
+            "JOIN construction_stages cs ON dp.stage_id=cs.id "
             "WHERE cs.object_id=? AND dp.status IN ('in_review','returned')", (o['id'],))
         o['packages_active'] = pkgs[0]['c'] if pkgs else 0
         result.append(o)

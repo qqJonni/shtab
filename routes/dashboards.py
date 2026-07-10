@@ -82,9 +82,8 @@ def _package_counts(role=None, user=None):
     tenant_args = []
     if u.role != 'admin' and u.role != 'contractor' and u.organization_id:
         tenant_where = (
-            ' AND dp.substage_id IN ('
-            '  SELECT ss.id FROM substages ss'
-            '  JOIN construction_stages cs ON ss.stage_id = cs.id'
+            ' AND dp.stage_id IN ('
+            '  SELECT cs.id FROM construction_stages cs'
             '  JOIN objects o ON cs.object_id = o.id'
             '  WHERE o.developer_id = ?)'
         )
@@ -283,11 +282,13 @@ def register(app):
         _tj, _tw, _ta = _tenant_obj_filter(current_user)
         pc = _package_counts('accountant', current_user)
         completed = query_db(
-            "SELECT dp.*, ss.name as substage_name, cs.name as stage_name, "
+            "SELECT dp.*, "
+            "(SELECT ss.name FROM package_items pi JOIN substages ss ON pi.substage_id = ss.id "
+            " WHERE pi.package_id = dp.id ORDER BY pi.id LIMIT 1) as substage_name, "
+            "cs.name as stage_name, "
             "o.name as object_name, org.name as contractor_name "
             "FROM doc_packages dp "
-            "JOIN substages ss ON dp.substage_id = ss.id "
-            "JOIN construction_stages cs ON ss.stage_id = cs.id "
+            "JOIN construction_stages cs ON dp.stage_id = cs.id "
             "JOIN objects o ON cs.object_id = o.id "
             "LEFT JOIN organizations org ON dp.contractor_id = org.id "
             f"WHERE dp.status = 'completed'{_tw} ORDER BY dp.completed_at DESC LIMIT 10",

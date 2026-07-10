@@ -1,0 +1,115 @@
+{% extends "base.html" %}
+{% block title %}Пакет КС — ШТАБ{% endblock %}
+{% block topbar_title %}Формирование пакета КС{% endblock %}
+{% block content %}
+<div class="d-flex align-items-center gap-2 mb-3">
+  <a href="{{ url_for('stage_detail', stage_id=stage.id) }}" class="btn btn-sm btn-outline-secondary"><i class="bi bi-arrow-left"></i></a>
+  <div>
+    <h4 class="fw-bold mb-0">Формирование пакета КС</h4>
+    <div class="text-muted" style="font-size:13px">Этап «{{ stage.name }}»</div>
+  </div>
+</div>
+
+<div class="card mb-4">
+  <div class="card-body p-4">
+    <p class="text-muted mb-3" style="font-size:14px">
+      Укажите объёмы к закрытию. Можно включить несколько подэтапов в один пакет и закрывать часть объёма (процентование).
+      Цены фиксируются на момент формирования пакета.
+    </p>
+    <form method="post" id="pkg-form">
+      <div class="table-responsive">
+        <table class="table mb-0" style="font-size:14px">
+          <thead>
+            <tr>
+              <th>Подэтап</th>
+              <th class="text-end">По договору</th>
+              <th class="text-end">Закрыто</th>
+              <th class="text-end">На согласовании</th>
+              <th class="text-end">Остаток</th>
+              <th>Ед.</th>
+              <th class="text-end">Цена</th>
+              <th class="text-end" style="width:140px">Заявляю к закрытию</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for s in volumes %}
+            <tr {% if s.fully_closed %}style="opacity:.45"{% endif %}>
+              <td>
+                <div class="fw-medium">{{ s.name }}</div>
+                {% if s.fully_closed %}
+                  <span class="badge badge-done" style="font-size:10px">Закрыт полностью</span>
+                {% elif s.fully_reserved or (s.remaining is not none and s.remaining <= 0 and (s.reserved_qty or 0) > 0) %}
+                  <span class="badge badge-progress" style="font-size:10px">Весь остаток на согласовании</span>
+                {% endif %}
+              </td>
+              <td class="text-end">{{ '{:,.2f}'.format(s.volume).replace(',', ' ') if s.volume is not none else '—' }}</td>
+              <td class="text-end text-muted">{{ '{:,.2f}'.format(s.closed_qty).replace(',', ' ') if s.volume is not none else ('Да' if s.fully_closed else '—') }}</td>
+              <td class="text-end text-muted">{{ '{:,.2f}'.format(s.reserved_qty).replace(',', ' ') if s.volume is not none else ('Да' if s.fully_reserved else '—') }}</td>
+              <td class="text-end fw-medium">{{ '{:,.2f}'.format(s.remaining).replace(',', ' ') if s.remaining is not none else '—' }}</td>
+              <td class="text-muted">{{ s.unit or '—' }}</td>
+              <td class="text-end text-muted">{{ '{:,.2f}'.format(s.unit_price).replace(',', ' ') if s.unit_price is not none else '—' }}</td>
+              <td class="text-end">
+                {% if s.fully_closed or s.fully_reserved %}
+                  —
+                {% elif s.volume is none %}
+                  <div class="form-check d-inline-block">
+                    <input class="form-check-input" type="checkbox" name="full_{{ s.id }}" value="1" id="full_{{ s.id }}">
+                    <label class="form-check-label" for="full_{{ s.id }}" style="font-size:12px">закрыть</label>
+                  </div>
+                {% elif s.remaining > 0 %}
+                  <input type="text" name="qty_{{ s.id }}" class="form-control form-control-sm text-end qty-input"
+                         data-price="{{ s.unit_price or 0 }}" data-max="{{ s.remaining }}"
+                         placeholder="0" style="max-width:130px;margin-left:auto">
+                {% else %}
+                  —
+                {% endif %}
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      <div class="d-flex justify-content-between align-items-center mt-4">
+        <div class="text-muted" style="font-size:13px">
+          Сумма пакета: <strong id="pkg-total" style="color:var(--text-main)">0,00 ₽</strong>
+        </div>
+        <div class="d-flex gap-2">
+          <button type="button" class="btn btn-outline-secondary" id="fill-all">Заявить весь остаток</button>
+          <button type="submit" class="btn btn-primary"><i class="bi bi-folder-plus me-1"></i>Создать пакет</button>
+        </div>
+      </div>
+    </form>
+  </div>
+</div>
+
+<script>
+(function () {
+  const inputs = document.querySelectorAll('.qty-input');
+  const totalEl = document.getElementById('pkg-total');
+  function recalc() {
+    let total = 0;
+    inputs.forEach(inp => {
+      const v = parseFloat((inp.value || '').replace(',', '.').replace(/\s/g, ''));
+      const price = parseFloat(inp.dataset.price) || 0;
+      if (!isNaN(v) && v > 0) total += v * price;
+    });
+    totalEl.textContent = total.toLocaleString('ru-RU', {minimumFractionDigits: 2, maximumFractionDigits: 2}) + ' ₽';
+  }
+  inputs.forEach(inp => {
+    inp.addEventListener('input', function () {
+      const v = parseFloat((inp.value || '').replace(',', '.').replace(/\s/g, ''));
+      const max = parseFloat(inp.dataset.max);
+      inp.classList.toggle('is-invalid', !isNaN(v) && v > max + 1e-9);
+      recalc();
+    });
+  });
+  document.getElementById('fill-all').addEventListener('click', function () {
+    inputs.forEach(inp => {
+      inp.value = parseFloat(inp.dataset.max);
+      inp.classList.remove('is-invalid');
+    });
+    recalc();
+  });
+})();
+</script>
+{% endblock %}

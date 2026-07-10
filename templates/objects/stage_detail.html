@@ -121,6 +121,14 @@
 </div>
 {% endif %}
 
+{% if current_user.role == 'contractor' and stage.contractor_id == current_user.organization_id and substages %}
+  <div class="d-flex justify-content-end mb-3">
+    <a href="{{ url_for('package_create', stage_id=stage.id) }}" class="btn btn-primary btn-sm">
+      <i class="bi bi-folder-plus me-1"></i>Сформировать пакет КС
+    </a>
+  </div>
+{% endif %}
+
 {% if not substages %}
   <div class="card mb-4">
     <div class="card-body text-center py-5 text-muted">
