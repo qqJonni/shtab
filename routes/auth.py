@@ -3,7 +3,7 @@ from flask_login import login_user, logout_user, login_required, current_user
 from werkzeug.security import generate_password_hash, check_password_hash
 
 import config
-from db import query_db, execute_db
+from db import query_db, execute_db, notify
 from helpers import save_avatar
 
 
@@ -63,6 +63,27 @@ def register(app):
                 'VALUES (?, ?, ?, ?, 0, ?, ?)',
                 (username, generate_password_hash(password), 'pending', full_name, org['id'], email),
             )
+
+            # Уведомить тех, кто может подтвердить заявку:
+            # админы + руководители тенанта (для подрядной орг — руководители
+            # тенанта-создателя, для developer-орг — её собственные)
+            org_full = query_db('SELECT type, created_by_org FROM organizations WHERE id = ?',
+                                (org['id'],), one=True)
+            if org_full and org_full['type'] == 'contractor' and org_full['created_by_org']:
+                manager_org_id = org_full['created_by_org']
+            else:
+                manager_org_id = org['id']
+            approvers = query_db(
+                "SELECT id FROM users WHERE is_approved = 1 AND (role = 'admin' "
+                "OR (role = 'manager' AND organization_id = ?))",
+                (manager_org_id,))
+            for u in approvers:
+                notify(u['id'], 'user',
+                       f'Новая заявка на регистрацию: {full_name}',
+                       f'{full_name} ({username}) зарегистрировался в организации «{org["name"]}» '
+                       'и ожидает подтверждения и назначения роли.',
+                       '/admin/users')
+
             flash(
                 f'Заявка отправлена. Вы привязаны к организации «{org["name"]}». '
                 'Дождитесь подтверждения и назначения роли администратором.',

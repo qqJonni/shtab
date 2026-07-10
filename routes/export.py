@@ -141,11 +141,13 @@ def register(app):
                   'approved':'Согласован','completed':'Завершён'}
         step_st = {'waiting':'⏳','pending':'🔵','approved':'✅','returned':'❌'}
         packages = query_db(
-            'SELECT dp.*, ss.name as sub_name, cs.name as stage_name, '
+            'SELECT dp.*, '
+            "(SELECT string_agg(ss.name, '; ') FROM package_items pi "
+            ' JOIN substages ss ON pi.substage_id = ss.id WHERE pi.package_id = dp.id) as sub_name, '
+            'cs.name as stage_name, '
             'o.name as obj_name, org.name as con_name '
             'FROM doc_packages dp '
-            'JOIN substages ss ON dp.substage_id=ss.id '
-            'JOIN construction_stages cs ON ss.stage_id=cs.id '
+            'JOIN construction_stages cs ON dp.stage_id=cs.id '
             'JOIN objects o ON cs.object_id=o.id '
             'LEFT JOIN organizations org ON dp.contractor_id=org.id '
             'ORDER BY dp.created_at DESC')

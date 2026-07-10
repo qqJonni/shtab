@@ -264,7 +264,8 @@ def init_db():
     cur.execute('''
         CREATE TABLE IF NOT EXISTS doc_packages (
             id SERIAL PRIMARY KEY,
-            substage_id INTEGER NOT NULL REFERENCES substages(id),
+            substage_id INTEGER REFERENCES substages(id),
+            stage_id INTEGER REFERENCES construction_stages(id),
             contractor_id INTEGER REFERENCES organizations(id),
             created_by INTEGER NOT NULL REFERENCES users(id),
             status TEXT NOT NULL DEFAULT 'draft' CHECK(status IN ('draft', 'in_review', 'returned', 'approved', 'completed')),
@@ -272,6 +273,18 @@ def init_db():
             created_at TEXT DEFAULT to_char(now(),'YYYY-MM-DD HH24:MI:SS'),
             submitted_at TEXT,
             completed_at TEXT
+        )
+    ''')
+
+    cur.execute('''
+        CREATE TABLE IF NOT EXISTS package_items (
+            id SERIAL PRIMARY KEY,
+            package_id INTEGER NOT NULL REFERENCES doc_packages(id) ON DELETE CASCADE,
+            substage_id INTEGER NOT NULL REFERENCES substages(id) ON DELETE CASCADE,
+            qty NUMERIC,
+            unit_price NUMERIC,
+            amount NUMERIC,
+            UNIQUE(package_id, substage_id)
         )
     ''')
 
@@ -713,6 +726,36 @@ def run_migrations(conn):
     # Онбординг: email пользователя (опциональный, при регистрации по коду)
     if not _col_exists('users', 'email'):
         cur.execute('ALTER TABLE users ADD COLUMN email TEXT')
+
+    # Многострочные пакеты (процентовка): stage_id + package_items
+    if not _col_exists('doc_packages', 'stage_id'):
+        cur.execute('ALTER TABLE doc_packages ADD COLUMN stage_id INTEGER REFERENCES construction_stages(id)')
+        cur.execute('ALTER TABLE doc_packages ALTER COLUMN substage_id DROP NOT NULL')
+    cur.execute('''
+        CREATE TABLE IF NOT EXISTS package_items (
+            id SERIAL PRIMARY KEY,
+            package_id INTEGER NOT NULL REFERENCES doc_packages(id) ON DELETE CASCADE,
+            substage_id INTEGER NOT NULL REFERENCES substages(id) ON DELETE CASCADE,
+            qty NUMERIC,
+            unit_price NUMERIC,
+            amount NUMERIC,
+            UNIQUE(package_id, substage_id)
+        )
+    ''')
+    # Бэкфилл: legacy-пакеты (substage_id, без stage_id) → stage_id + одна строка item на полный объём
+    cur.execute('''
+        UPDATE doc_packages dp SET stage_id = ss.stage_id
+        FROM substages ss
+        WHERE dp.substage_id = ss.id AND dp.stage_id IS NULL
+    ''')
+    cur.execute('''
+        INSERT INTO package_items (package_id, substage_id, qty, unit_price, amount)
+        SELECT dp.id, dp.substage_id, ss.volume, ss.unit_price, ss.total_price
+        FROM doc_packages dp
+        JOIN substages ss ON dp.substage_id = ss.id
+        WHERE NOT EXISTS (SELECT 1 FROM package_items pi WHERE pi.package_id = dp.id)
+        ON CONFLICT (package_id, substage_id) DO NOTHING
+    ''')
 
     # Онбординг подрядчиков: какой тенант завёл организацию
     if not _col_exists('organizations', 'created_by_org'):

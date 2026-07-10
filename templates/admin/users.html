@@ -49,7 +49,9 @@
           <td class="text-muted" style="font-size:13px">{{ u.created_at[:10] if u.created_at else '—' }}</td>
           <td class="text-end">
             <div class="d-inline-flex gap-1">
-              <a href="{{ url_for('user_edit', user_id=u.id) }}" class="btn btn-sm btn-outline-primary py-0 px-2" title="Редактировать"><i class="bi bi-pencil"></i></a>
+              {% if current_user.role == 'admin' or u.organization_id == current_user.organization_id %}
+                <a href="{{ url_for('user_edit', user_id=u.id) }}" class="btn btn-sm btn-outline-primary py-0 px-2" title="Редактировать"><i class="bi bi-pencil"></i></a>
+              {% endif %}
               {% if not u.is_approved %}
                 <form method="post" action="{{ url_for('user_approve', user_id=u.id) }}" class="d-inline-flex gap-1 align-items-center">
                   {% if current_user.role == 'manager' and u.organization_id != current_user.organization_id %}
@@ -74,7 +76,7 @@
                   <button class="btn btn-sm btn-outline-secondary py-0 px-2" title="Заблокировать"><i class="bi bi-slash-circle"></i></button>
                 </form>
               {% endif %}
-              {% if current_user.role == 'admin' and u.id != current_user.id %}
+              {% if u.id != current_user.id and u.role != 'admin' and (current_user.role == 'admin' or u.organization_id == current_user.organization_id) %}
                 <form method="post" action="{{ url_for('user_delete', user_id=u.id) }}" class="d-inline" onsubmit="return confirm('Удалить пользователя «{{ u.username }}»? Это действие необратимо.')">
                   <button class="btn btn-sm btn-outline-danger py-0 px-2" title="Удалить"><i class="bi bi-trash"></i></button>
                 </form>

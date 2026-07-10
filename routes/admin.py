@@ -105,6 +105,10 @@ def register(app):
     @role_required('admin', 'manager')
     def user_edit(user_id):
         _, is_own_org = _assert_same_tenant(user_id)
+        # manager может редактировать данные (ФИО/логин/пароль) только своих;
+        # пользователей подрядных организаций — лишь подтверждать/блокировать
+        if current_user.role == 'manager' and not is_own_org:
+            abort(403)
         user = query_db(
             'SELECT u.*, o.name as org_name FROM users u '
             'LEFT JOIN organizations o ON u.organization_id = o.id WHERE u.id = ?',
@@ -137,9 +141,6 @@ def register(app):
 
             if role not in config.ROLES:
                 role = user['role']
-            # manager editing a linked contractor-org user: role stays contractor
-            if current_user.role == 'manager' and not is_own_org:
-                role = 'contractor'
 
             db = get_db()
             db.execute('UPDATE users SET full_name=?, username=?, role=?, organization_id=? WHERE id=?',
@@ -156,7 +157,7 @@ def register(app):
 
     @app.route('/admin/users/<int:user_id>/delete', methods=['GET', 'POST'])
     @login_required
-    @role_required('admin')
+    @role_required('admin', 'manager')
     def user_delete(user_id):
         if user_id == current_user.id:
             flash('Нельзя удалить самого себя.', 'danger')
@@ -164,6 +165,13 @@ def register(app):
         user = query_db('SELECT u.*, o.name as org_name FROM users u LEFT JOIN organizations o ON u.organization_id=o.id WHERE u.id=?', (user_id,), one=True)
         if not user:
             abort(404)
+        # manager удаляет только пользователей СВОЕЙ организации (не подрядных)
+        if current_user.role == 'manager':
+            if user['organization_id'] != current_user.organization_id:
+                abort(403)
+        if user['role'] == 'admin':
+            flash('Нельзя удалить администратора.', 'danger')
+            return redirect(url_for('users_list'))
 
         links = _get_user_links(user_id)
 

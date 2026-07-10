@@ -51,6 +51,48 @@
   </div>
 </div>
 
+{# ═══ Позиции пакета (закрываемые объёмы) ═══ #}
+{% if pkg['items'] %}
+<h5 class="fw-bold mb-3">Состав пакета</h5>
+<div class="card mb-4">
+  <div class="table-responsive">
+    <table class="table mb-0" style="font-size:14px">
+      <thead>
+        <tr>
+          <th>Подэтап</th>
+          <th class="text-end">Объём к закрытию</th>
+          <th>Ед.</th>
+          <th class="text-end">Цена</th>
+          <th class="text-end">Сумма</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for it in pkg['items'] %}
+        <tr>
+          <td>
+            <a href="{{ url_for('substage_detail', sub_id=it.substage_id) }}" class="text-decoration-none fw-medium" style="color:var(--text-main)">{{ it.substage_name }}</a>
+            {% if it.qty is not none and it.substage_volume is not none and it.qty < it.substage_volume %}
+              <span class="badge badge-progress ms-1" style="font-size:10px">частично · {{ '{:.0f}'.format(it.qty|float / it.substage_volume|float * 100) }}%</span>
+            {% endif %}
+          </td>
+          <td class="text-end">{{ '{:,.2f}'.format(it.qty).replace(',', ' ') if it.qty is not none else 'полностью' }}</td>
+          <td class="text-muted">{{ it.unit or '—' }}</td>
+          <td class="text-end text-muted">{{ '{:,.2f}'.format(it.unit_price).replace(',', ' ') if it.unit_price is not none else '—' }}</td>
+          <td class="text-end fw-medium">{{ '{:,.2f}'.format(it.amount).replace(',', ' ') if it.amount is not none else '—' }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+      <tfoot>
+        <tr>
+          <td colspan="4" class="text-end fw-bold">Итого:</td>
+          <td class="text-end fw-bold">{{ '{:,.2f}'.format(pkg['items_total']).replace(',', ' ') }} ₽</td>
+        </tr>
+      </tfoot>
+    </table>
+  </div>
+</div>
+{% endif %}
+
 {# ═══ Цепочка согласования ═══ #}
 {% if steps %}
 <h5 class="fw-bold mb-3">Маршрут согласования</h5>

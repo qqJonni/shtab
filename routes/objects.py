@@ -281,8 +281,7 @@ def register(app):
             (obj_id,), one=True)['c']
         packages_active = query_db(
             "SELECT COUNT(*) as c FROM doc_packages dp "
-            "JOIN substages ss ON dp.substage_id=ss.id "
-            "JOIN construction_stages cs ON ss.stage_id=cs.id "
+            "JOIN construction_stages cs ON dp.stage_id=cs.id "
             "WHERE cs.object_id=? AND dp.status IN ('in_review','returned')", (obj_id,), one=True)['c']
         mr_active = query_db(
             "SELECT COUNT(*) as c FROM material_requests mr "
@@ -473,8 +472,7 @@ def register(app):
             # Переназначить pending-шаги КС этого объекта
             ks_pkg_ids = [r['id'] for r in query_db(
                 'SELECT dp.id FROM doc_packages dp '
-                'JOIN substages ss ON dp.substage_id = ss.id '
-                'JOIN construction_stages cs ON ss.stage_id = cs.id '
+                'JOIN construction_stages cs ON dp.stage_id = cs.id '
                 'WHERE cs.object_id = ?', (obj_id,))]
             if ks_pkg_ids:
                 db.execute(
@@ -1036,7 +1034,8 @@ def register(app):
             'WHERE sp.substage_id = ? ORDER BY sp.uploaded_at DESC', (sub_id,))
         photos_list = [dict(p) for p in photos]
         package = query_db(
-            "SELECT * FROM doc_packages WHERE substage_id = ? AND status != 'completed' ORDER BY id DESC LIMIT 1",
+            "SELECT dp.* FROM doc_packages dp JOIN package_items pi ON pi.package_id = dp.id "
+            "WHERE pi.substage_id = ? AND dp.status != 'completed' ORDER BY dp.id DESC LIMIT 1",
             (sub_id,), one=True)
         return render_template('objects/substage_detail.html',
                                sub=sub, stage=stage, photos=photos, photos_json=photos_list,

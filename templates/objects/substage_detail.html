@@ -80,10 +80,8 @@
     <div class="card mb-4">
       <div class="card-body p-4 text-center">
         <i class="bi bi-file-earmark-check" style="font-size:32px;color:var(--primary);opacity:.6"></i>
-        <p class="mt-2 mb-3 text-muted" style="font-size:14px">Подэтап выполнен. Сформируйте пакет документов для закрытия.</p>
-        <form method="post" action="{{ url_for('package_create', sub_id=sub.id) }}">
-          <button class="btn btn-primary"><i class="bi bi-folder-plus me-1"></i>Закрыть подэтап и сформировать пакет</button>
-        </form>
+        <p class="mt-2 mb-3 text-muted" style="font-size:14px">Подэтап выполнен. Сформируйте пакет документов — можно включить несколько подэтапов или закрыть часть объёма.</p>
+        <a href="{{ url_for('package_create', stage_id=sub.stage_id) }}" class="btn btn-primary"><i class="bi bi-folder-plus me-1"></i>Сформировать пакет КС</a>
       </div>
     </div>
   {% elif package %}
