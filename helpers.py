@@ -70,6 +70,26 @@ TEAM_ROLES = [
 ]
 
 
+def recalc_stage_actuals(stage_id):
+    """Пересчитывает факт-даты этапа из его подэтапов.
+
+    actual_start = минимальный actual_start_date подэтапов;
+    actual_end   = максимальный actual_end_date, только если этап в 'done'
+    (иначе очищается — этап ещё идёт)."""
+    from db import get_db, query_db
+    db = get_db()
+    row = query_db(
+        'SELECT MIN(actual_start_date) as s, MAX(actual_end_date) as e '
+        'FROM substages WHERE stage_id = ?', (stage_id,), one=True)
+    stage = query_db('SELECT status FROM construction_stages WHERE id = ?', (stage_id,), one=True)
+    if not stage:
+        return
+    actual_end = row['e'] if stage['status'] == 'done' else None
+    db.execute('UPDATE construction_stages SET actual_start_date = ?, actual_end_date = ? WHERE id = ?',
+               (row['s'], actual_end, stage_id))
+    db.commit()
+
+
 def linked_contractor_org_ids(tenant_org_id):
     """Подрядные организации, связанные с тенантом: созданные им
     или работающие на этапах его объектов."""

@@ -615,6 +615,14 @@ def register(app):
                 'plan_start_date=?, plan_end_date=?, status=? WHERE id=?',
                 (name, description, order_num, plan_start, plan_end, status, stage_id),
             )
+            # авто-факт этапа: закрытие → факт-финиш, откат из done → очистка
+            from helpers import recalc_stage_actuals
+            recalc_stage_actuals(stage_id)
+            if status == 'done':
+                from datetime import date
+                execute_db(
+                    'UPDATE construction_stages SET actual_end_date = COALESCE(actual_end_date, ?) WHERE id = ?',
+                    (date.today().isoformat(), stage_id))
             flash('Этап обновлён.', 'success')
             return redirect(url_for('object_detail', obj_id=stage['object_id']))
 
@@ -1078,14 +1086,30 @@ def register(app):
             return redirect(url_for('substage_detail', sub_id=sub_id))
 
         from db import get_db
+        from datetime import date
         db = get_db()
+        today = date.today().isoformat()
         if new_status == 'done':
-            db.execute('UPDATE substages SET status = ?, completed_at = CURRENT_TIMESTAMP WHERE id = ?',
-                       (new_status, sub_id))
-        else:
-            db.execute('UPDATE substages SET status = ?, completed_at = NULL WHERE id = ?',
-                       (new_status, sub_id))
+            db.execute(
+                'UPDATE substages SET status = ?, completed_at = CURRENT_TIMESTAMP, '
+                'actual_start_date = COALESCE(actual_start_date, ?), '
+                'actual_end_date = COALESCE(actual_end_date, ?) WHERE id = ?',
+                (new_status, today, today, sub_id))
+        elif new_status == 'in_progress':
+            db.execute(
+                'UPDATE substages SET status = ?, completed_at = NULL, '
+                'actual_start_date = COALESCE(actual_start_date, ?), '
+                'actual_end_date = NULL WHERE id = ?',
+                (new_status, today, sub_id))
+        else:  # not_started — полный откат факта
+            db.execute(
+                'UPDATE substages SET status = ?, completed_at = NULL, '
+                'actual_start_date = NULL, actual_end_date = NULL WHERE id = ?',
+                (new_status, sub_id))
         db.commit()
+
+        from helpers import recalc_stage_actuals
+        recalc_stage_actuals(sub['stage_id'])
 
         flash(f'Статус изменён: {STATUS_LABELS.get(new_status, new_status)}.', 'success')
         return redirect(url_for('substage_detail', sub_id=sub_id))
