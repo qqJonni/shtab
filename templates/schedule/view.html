@@ -36,6 +36,104 @@
 
 <div class="gantt-tooltip" id="gantt-tip" style="display:none"></div>
 
+{# ═══ Итоги ═══ #}
+{% set t = data.totals %}
+<div class="row g-3 mt-1 mb-1">
+  <div class="col-6 col-md-3">
+    <div class="card h-100"><div class="card-body py-3 px-3">
+      <div class="text-muted" style="font-size:12px">Выполнение объекта</div>
+      <div class="fw-bold" style="font-size:22px">{{ t.progress }}%</div>
+      <div class="progress mt-1" style="height:6px"><div class="progress-bar" style="width:{{ t.progress }}%"></div></div>
+    </div></div>
+  </div>
+  <div class="col-6 col-md-3">
+    <div class="card h-100"><div class="card-body py-3 px-3">
+      <div class="text-muted" style="font-size:12px">Освоено / бюджет</div>
+      <div class="fw-bold" style="font-size:16px">{{ '{:,.0f}'.format(t.done_cost).replace(',', ' ') }} ₽</div>
+      <div class="text-muted" style="font-size:12px">из {{ '{:,.0f}'.format(t.plan_cost).replace(',', ' ') }} ₽</div>
+    </div></div>
+  </div>
+  <div class="col-6 col-md-3">
+    <div class="card h-100"><div class="card-body py-3 px-3">
+      <div class="text-muted" style="font-size:12px">Просрочено работ</div>
+      <div class="fw-bold" style="font-size:22px;{% if t.overdue %}color:var(--danger){% endif %}">{{ t.overdue }}</div>
+    </div></div>
+  </div>
+  <div class="col-6 col-md-3">
+    <div class="card h-100"><div class="card-body py-3 px-3">
+      <div class="text-muted" style="font-size:12px">Суммарное отставание</div>
+      <div class="fw-bold" style="font-size:22px;{% if t.lag_days %}color:var(--danger){% endif %}">{{ t.lag_days }} дн.</div>
+    </div></div>
+  </div>
+</div>
+
+{# ═══ Таблица план-факт ═══ #}
+<h5 class="fw-bold mt-4 mb-2">План-факт по работам</h5>
+<div class="card">
+  <div class="table-responsive">
+    <table class="table table-hover mb-0" style="font-size:13px">
+      <thead>
+        <tr>
+          <th>Работа</th>
+          <th>План</th>
+          <th>Факт</th>
+          <th class="text-end">Объём план</th>
+          <th class="text-end">Закрыто</th>
+          <th class="text-end">%</th>
+          <th class="text-end">Откл., дн.</th>
+          <th class="text-center" style="width:56px"></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for s in data.stages %}
+        <tr style="background:#F8FAFC">
+          <td class="fw-semibold">
+            <a href="{{ url_for('stage_detail', stage_id=s.id) }}" class="text-decoration-none" style="color:var(--text-main)">{{ s.name }}</a>
+            {% if s.contractor %}<div class="text-muted fw-normal" style="font-size:11.5px">{{ s.contractor }}</div>{% endif %}
+          </td>
+          <td style="white-space:nowrap">{{ s.plan_start or '—' }} → {{ s.plan_end or '—' }}</td>
+          <td style="white-space:nowrap">{{ s.actual_start or '—' }} → {{ s.actual_end or '—' }}</td>
+          <td class="text-end text-muted">—</td>
+          <td class="text-end text-muted">—</td>
+          <td class="text-end fw-semibold">{{ s.progress }}%</td>
+          <td class="text-end fw-semibold {% if s.deviation is not none and s.deviation < 0 %}text-danger{% elif s.deviation and s.deviation > 0 %}text-success{% endif %}">
+            {{ ('%+d' % s.deviation) if s.deviation is not none else '—' }}
+          </td>
+          <td class="text-center">
+            {% if s.risk == 'overdue' %}<span class="badge badge-overdue">⬤</span>
+            {% elif s.risk == 'risk' %}<span class="badge badge-rework">⬤</span>
+            {% elif s.risk == 'done' %}<span class="badge badge-done">⬤</span>
+            {% else %}<span class="badge badge-progress">⬤</span>{% endif %}
+          </td>
+        </tr>
+        {% for x in s.subs %}
+        <tr>
+          <td style="padding-left:26px">
+            <a href="{{ url_for('substage_detail', sub_id=x.id) }}" class="text-decoration-none" style="color:var(--text-main)">{{ x.name }}</a>
+          </td>
+          <td class="text-muted" style="white-space:nowrap;font-size:12px">{{ x.plan_start or '—' }} → {{ x.plan_end or '—' }}</td>
+          <td class="text-muted" style="white-space:nowrap;font-size:12px">{{ x.actual_start or '—' }} → {{ x.actual_end or '—' }}</td>
+          <td class="text-end">{{ '{:,.1f}'.format(x.volume).replace(',', ' ') if x.volume is not none else '—' }} {{ x.unit or '' }}</td>
+          <td class="text-end">{{ '{:,.1f}'.format(x.closed_qty).replace(',', ' ') if x.closed_qty is not none else '—' }}</td>
+          <td class="text-end">{{ x.progress }}%</td>
+          <td class="text-end {% if x.deviation is not none and x.deviation < 0 %}text-danger{% elif x.deviation and x.deviation > 0 %}text-success{% endif %}">
+            {{ ('%+d' % x.deviation) if x.deviation is not none else '—' }}
+          </td>
+          <td class="text-center">
+            {% if x.risk == 'overdue' %}<span style="color:#EF4444">⬤</span>
+            {% elif x.risk == 'risk' %}<span style="color:#F59E0B">⬤</span>
+            {% elif x.risk == 'done' %}<span style="color:#10B981">⬤</span>
+            {% elif x.risk == 'suspended' %}<span style="color:#94A3B8">⬤</span>
+            {% else %}<span style="color:#3B82F6">⬤</span>{% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
 <style>
 .gantt-legend { display:inline-block; width:14px; height:8px; border-radius:3px; vertical-align:middle; margin-right:3px; }
 .gantt-legend-plan { background:transparent; border:1.5px dashed #94A3B8; height:6px; }
