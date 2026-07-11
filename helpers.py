@@ -70,6 +70,20 @@ TEAM_ROLES = [
 ]
 
 
+def linked_contractor_org_ids(tenant_org_id):
+    """Подрядные организации, связанные с тенантом: созданные им
+    или работающие на этапах его объектов."""
+    from db import query_db
+    rows = query_db(
+        "SELECT id FROM organizations WHERE type = 'contractor' AND created_by_org = ? "
+        "UNION "
+        "SELECT DISTINCT cs.contractor_id FROM construction_stages cs "
+        "JOIN objects ob ON cs.object_id = ob.id "
+        "WHERE ob.developer_id = ? AND cs.contractor_id IS NOT NULL",
+        (tenant_org_id, tenant_org_id))
+    return [r['id'] for r in rows]
+
+
 def get_object_team(object_id):
     """Returns {role: {'id': user_id, 'full_name': ..., 'user_role': role}} for the object."""
     from db import query_db

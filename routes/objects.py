@@ -5,7 +5,8 @@ from flask_login import login_required, current_user
 import config
 from db import query_db, execute_db, get_db, notify
 from helpers import role_required, accessible_object_ids, assert_object_access, \
-    get_object_team, TEAM_ROLES, save_stage_document, save_substage_photo, save_plan_file
+    get_object_team, TEAM_ROLES, linked_contractor_org_ids, \
+    save_stage_document, save_substage_photo, save_plan_file
 
 VIEWERS = ('manager', 'admin', 'pto', 'inspector', 'foreman')
 EDITORS = ('manager', 'admin')
@@ -24,17 +25,31 @@ def register(app):
 
     # ═══ Организации ═══
 
+    def _manager_org_scope():
+        """ID организаций, доступных текущему manager: своя + связанные подрядные."""
+        return [current_user.organization_id] + linked_contractor_org_ids(current_user.organization_id)
+
+    def _assert_org_access(org_id):
+        """403, если manager обращается к организации вне своего скоупа."""
+        if current_user.role == 'manager' and org_id not in _manager_org_scope():
+            abort(403)
+
     @app.route('/organizations')
     @login_required
     @role_required('admin', 'manager')
     def organizations_list():
-        orgs = query_db('SELECT * FROM organizations ORDER BY type, name')
+        if current_user.role == 'manager':
+            orgs = query_db('SELECT * FROM organizations WHERE id = ANY(?) ORDER BY type, name',
+                            (_manager_org_scope(),))
+        else:
+            orgs = query_db('SELECT * FROM organizations ORDER BY type, name')
         return render_template('organizations/list.html', orgs=orgs)
 
     @app.route('/organizations/<int:org_id>/edit', methods=['GET', 'POST'])
     @login_required
     @role_required('admin', 'manager')
     def organization_edit(org_id):
+        _assert_org_access(org_id)
         org = query_db('SELECT * FROM organizations WHERE id = ?', (org_id,), one=True)
         if not org:
             abort(404)
@@ -125,6 +140,7 @@ def register(app):
     @login_required
     @role_required('admin', 'manager')
     def organization_link_user(org_id):
+        _assert_org_access(org_id)
         user_id = request.form.get('user_id', '')
         if user_id:
             execute_db('UPDATE users SET organization_id = ? WHERE id = ? AND role = ?',
@@ -136,6 +152,7 @@ def register(app):
     @login_required
     @role_required('admin', 'manager')
     def organization_unlink_user(org_id, user_id):
+        _assert_org_access(org_id)
         execute_db('UPDATE users SET organization_id = NULL WHERE id = ? AND organization_id = ?',
                    (user_id, org_id))
         flash('Подрядчик откреплён от организации.', 'success')
@@ -145,6 +162,7 @@ def register(app):
     @login_required
     @role_required('admin', 'manager')
     def organization_delete(org_id):
+        _assert_org_access(org_id)
         org = query_db('SELECT * FROM organizations WHERE id = ?', (org_id,), one=True)
         if not org:
             abort(404)

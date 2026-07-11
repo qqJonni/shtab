@@ -3,21 +3,12 @@ from flask_login import login_required, current_user
 
 import config
 from db import query_db, execute_db, get_db
-from helpers import role_required
+from helpers import role_required, linked_contractor_org_ids
 
 
 def register(app):
 
-    def _linked_contractor_org_ids(tenant_org_id):
-        """Contractor orgs linked to the tenant: created by it OR working on its objects."""
-        rows = query_db(
-            "SELECT id FROM organizations WHERE type = 'contractor' AND created_by_org = ? "
-            "UNION "
-            "SELECT DISTINCT cs.contractor_id FROM construction_stages cs "
-            "JOIN objects ob ON cs.object_id = ob.id "
-            "WHERE ob.developer_id = ? AND cs.contractor_id IS NOT NULL",
-            (tenant_org_id, tenant_org_id))
-        return [r['id'] for r in rows]
+    _linked_contractor_org_ids = linked_contractor_org_ids
 
     @app.route('/admin/users')
     @login_required
