@@ -1,11 +1,12 @@
-"""График производства работ (ГПР): Гант, план-факт."""
+"""График производства работ (ГПР): Гант, план-факт, baseline, вехи."""
+import json
 from datetime import date, timedelta
 
-from flask import render_template, abort
+from flask import render_template, redirect, url_for, request, flash, abort
 from flask_login import login_required, current_user
 
-from db import query_db
-from helpers import assert_object_access
+from db import query_db, execute_db
+from helpers import assert_object_access, role_required
 
 RISK_AHEAD_DAYS = 7   # «под риском»: плановый финиш ближе N дней, работа не завершена
 
@@ -131,9 +132,33 @@ def get_s_curve(object_id, rng_start, rng_end, today):
             'total': round(sum(plan_daily))}
 
 
+def _active_baseline(object_id):
+    """Последний утверждённый baseline объекта: (meta, {'stage:ID'|'sub:ID': {...}})."""
+    row = query_db(
+        'SELECT * FROM schedule_baselines WHERE object_id = ? ORDER BY id DESC LIMIT 1',
+        (object_id,), one=True)
+    if not row or not row['data_json']:
+        return None, {}
+    try:
+        return dict(row), json.loads(row['data_json'])
+    except (ValueError, TypeError):
+        return dict(row), {}
+
+
+def _baseline_dev(item_key, baseline, ref_end):
+    """Отклонение от baseline в днях: baseline_end − ref_end.
+    ref_end — факт-финиш (для завершённых) или текущий плановый.
+    >0 идём раньше утверждённого, <0 — уехали позже."""
+    b = baseline.get(item_key)
+    if not b or not b.get('plan_end') or not ref_end:
+        return None
+    return _days(ref_end, b['plan_end'])
+
+
 def get_schedule_data(object_id):
     """Данные Ганта и план-факта по объекту."""
     today = date.today().isoformat()
+    bl_meta, baseline = _active_baseline(object_id)
     stages = query_db(
         'SELECT cs.*, org.name as contractor_name '
         'FROM construction_stages cs '
@@ -181,6 +206,7 @@ def get_schedule_data(object_id):
             st_done_cost += cost * progress / 100
 
             dev = _deviation(x['plan_end_date'], x['actual_end_date'], fin, today)
+            ref_end = x['actual_end_date'] if fin else x['plan_end_date']
             row = {
                 'id': x['id'], 'name': x['name'],
                 'plan_start': x['plan_start_date'], 'plan_end': x['plan_end_date'],
@@ -189,6 +215,7 @@ def get_schedule_data(object_id):
                 'volume': volume, 'unit': x['unit'], 'closed_qty': closed_qty if volume else None,
                 'progress': progress, 'status': x['status'],
                 'deviation': dev,
+                'baseline_dev': _baseline_dev(f'sub:{x["id"]}', baseline, ref_end),
                 'risk': _risk(x['status'], x['plan_end_date'], today, ('done', 'closed', 'approved')),
             }
             sub_rows.append(row)
@@ -210,6 +237,9 @@ def get_schedule_data(object_id):
             'plan_start': s['plan_start_date'], 'plan_end': s['plan_end_date'],
             'actual_start': s['actual_start_date'], 'actual_end': s['bar_actual_end'],
             'deviation': _deviation(s['plan_end_date'], s['actual_end_date'], s['status'] == 'done', today),
+            'baseline_dev': _baseline_dev(
+                f'stage:{s["id"]}', baseline,
+                s['actual_end_date'] if s['status'] == 'done' else s['plan_end_date']),
             'plan_cost': st_plan_cost, 'done_cost': st_done_cost,
             'subs': sub_rows,
         })
@@ -240,9 +270,18 @@ def get_schedule_data(object_id):
         'stages_total': len(out),
     }
 
+    milestones = [dict(r) for r in query_db(
+        'SELECT * FROM schedule_milestones WHERE object_id = ? ORDER BY order_num, plan_date, id',
+        (object_id,))]
+    for m in milestones:
+        m['overdue'] = (m['status'] == 'pending' and m['plan_date'] and m['plan_date'] < today)
+
     return {'range': {'start': rng_start, 'end': rng_end, 'today': today},
             'stages': out, 'totals': totals,
-            'scurve': get_s_curve(object_id, rng_start, rng_end, today)}
+            'scurve': get_s_curve(object_id, rng_start, rng_end, today),
+            'baseline': {'id': bl_meta['id'], 'name': bl_meta['name'],
+                         'created_at': bl_meta['created_at']} if bl_meta else None,
+            'milestones': milestones}
 
 
 def register(app):
@@ -257,3 +296,80 @@ def register(app):
 
         data = get_schedule_data(obj_id)
         return render_template('schedule/view.html', obj=obj, data=data)
+
+    @app.route('/objects/<int:obj_id>/schedule/baseline', methods=['POST'])
+    @login_required
+    @role_required('manager', 'admin')
+    def schedule_baseline_create(obj_id):
+        obj = query_db('SELECT * FROM objects WHERE id = ?', (obj_id,), one=True)
+        if not obj:
+            abort(404)
+        assert_object_access(current_user, obj_id)
+
+        snapshot = {}
+        for s in query_db('SELECT id, plan_start_date, plan_end_date FROM construction_stages '
+                          'WHERE object_id = ?', (obj_id,)):
+            snapshot[f'stage:{s["id"]}'] = {'plan_start': s['plan_start_date'], 'plan_end': s['plan_end_date']}
+        for x in query_db('SELECT ss.id, ss.plan_start_date, ss.plan_end_date, ss.volume, ss.total_price '
+                          'FROM substages ss JOIN construction_stages cs ON ss.stage_id = cs.id '
+                          'WHERE cs.object_id = ?', (obj_id,)):
+            snapshot[f'sub:{x["id"]}'] = {
+                'plan_start': x['plan_start_date'], 'plan_end': x['plan_end_date'],
+                'volume': float(x['volume']) if x['volume'] is not None else None,
+                'cost': float(x['total_price']) if x['total_price'] is not None else None}
+
+        n = query_db('SELECT COUNT(*) as c FROM schedule_baselines WHERE object_id = ?',
+                     (obj_id,), one=True)['c']
+        name = request.form.get('name', '').strip() or f'Версия {n + 1} от {date.today().isoformat()}'
+        execute_db('INSERT INTO schedule_baselines (object_id, name, created_by, data_json) '
+                   'VALUES (?, ?, ?, ?)',
+                   (obj_id, name, current_user.id, json.dumps(snapshot, ensure_ascii=False)))
+        flash(f'График утверждён: «{name}». Отклонения теперь считаются от этой версии.', 'success')
+        return redirect(url_for('object_schedule', obj_id=obj_id))
+
+    # ─── Вехи ────────────────────────────────────────────────────────────────
+
+    @app.route('/objects/<int:obj_id>/milestones/add', methods=['POST'])
+    @login_required
+    @role_required('manager', 'pto', 'admin')
+    def milestone_add(obj_id):
+        assert_object_access(current_user, obj_id)
+        name = request.form.get('name', '').strip()
+        plan_date = request.form.get('plan_date', '').strip() or None
+        if not name:
+            flash('Введите название вехи.', 'danger')
+        else:
+            execute_db('INSERT INTO schedule_milestones (object_id, name, plan_date) VALUES (?, ?, ?)',
+                       (obj_id, name, plan_date))
+            flash('Веха добавлена.', 'success')
+        return redirect(url_for('object_schedule', obj_id=obj_id) + '#milestones')
+
+    def _get_milestone_or_403(m_id):
+        m = query_db('SELECT * FROM schedule_milestones WHERE id = ?', (m_id,), one=True)
+        if not m:
+            abort(404)
+        assert_object_access(current_user, m['object_id'])
+        return m
+
+    @app.route('/milestones/<int:m_id>/done', methods=['POST'])
+    @login_required
+    @role_required('manager', 'pto', 'admin')
+    def milestone_done(m_id):
+        m = _get_milestone_or_403(m_id)
+        if m['status'] == 'done':
+            execute_db("UPDATE schedule_milestones SET status = 'pending', actual_date = NULL WHERE id = ?", (m_id,))
+            flash('Веха возвращена в ожидание.', 'info')
+        else:
+            execute_db("UPDATE schedule_milestones SET status = 'done', actual_date = ? WHERE id = ?",
+                       (request.form.get('actual_date', '').strip() or date.today().isoformat(), m_id))
+            flash('Веха отмечена достигнутой.', 'success')
+        return redirect(url_for('object_schedule', obj_id=m['object_id']) + '#milestones')
+
+    @app.route('/milestones/<int:m_id>/delete', methods=['POST'])
+    @login_required
+    @role_required('manager', 'pto', 'admin')
+    def milestone_delete(m_id):
+        m = _get_milestone_or_403(m_id)
+        execute_db('DELETE FROM schedule_milestones WHERE id = ?', (m_id,))
+        flash('Веха удалена.', 'success')
+        return redirect(url_for('object_schedule', obj_id=m['object_id']) + '#milestones')
