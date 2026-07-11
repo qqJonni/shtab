@@ -58,6 +58,79 @@ def _closed_volumes(object_id):
     return {r['substage_id']: r for r in rows}
 
 
+def get_s_curve(object_id, rng_start, rng_end, today):
+    """S-кривая освоения: недельные точки, кумулятив в ₽.
+
+    План: стоимость каждого подэтапа равномерно распределяется по его
+    плановому периоду (plan_start подэтапа, fallback — plan_start этапа;
+    без дат — скачком на плановый финиш).
+    Факт: суммы принятых пакетов КС на их completed_at + для завершённых
+    подэтапов без пакетов (или закрытых не полностью) — остаток стоимости
+    на actual_end_date. Факт обрезается по сегодня."""
+    subs = query_db(
+        'SELECT ss.*, cs.plan_start_date as st_plan_start '
+        'FROM substages ss JOIN construction_stages cs ON ss.stage_id = cs.id '
+        'WHERE cs.object_id = ?', (object_id,))
+    pkg_events = query_db(
+        "SELECT LEFT(dp.completed_at, 10) as d, SUM(pi.amount) as amt, "
+        "       pi.substage_id "
+        "FROM package_items pi JOIN doc_packages dp ON pi.package_id = dp.id "
+        "JOIN construction_stages cs ON dp.stage_id = cs.id "
+        "WHERE dp.status = 'completed' AND dp.completed_at IS NOT NULL AND cs.object_id = ? "
+        "GROUP BY LEFT(dp.completed_at, 10), pi.substage_id", (object_id,))
+
+    d0 = date.fromisoformat(rng_start)
+    d1 = date.fromisoformat(rng_end)
+    n_days = (d1 - d0).days + 1
+    plan_daily = [0.0] * n_days
+    fact_daily = [0.0] * n_days
+
+    def day_idx(iso):
+        return min(max((date.fromisoformat(iso) - d0).days, 0), n_days - 1)
+
+    closed_by_sub = {}
+    for e in pkg_events:
+        closed_by_sub[e['substage_id']] = closed_by_sub.get(e['substage_id'], 0.0) + float(e['amt'] or 0)
+        fact_daily[day_idx(e['d'])] += float(e['amt'] or 0)
+
+    for x in subs:
+        cost = float(x['total_price'] or 0)
+        if cost <= 0:
+            continue
+        # план
+        p_start = x['plan_start_date'] or x['st_plan_start']
+        p_end = x['plan_end_date']
+        if p_start and p_end and p_start <= p_end:
+            i0, i1 = day_idx(p_start), day_idx(p_end)
+            per_day = cost / (i1 - i0 + 1)
+            for i in range(i0, i1 + 1):
+                plan_daily[i] += per_day
+        elif p_end:
+            plan_daily[day_idx(p_end)] += cost
+        # факт: остаток стоимости завершённого подэтапа, не покрытый пакетами
+        if x['status'] in ('done', 'closed', 'approved'):
+            rest = max(cost - closed_by_sub.get(x['id'], 0.0), 0.0)
+            fin = x['actual_end_date'] or (x['completed_at'] or '')[:10] or x['plan_end_date']
+            if rest > 0 and fin:
+                fact_daily[day_idx(fin)] += rest
+
+    # кумулятив + недельные точки
+    labels, plan, fact = [], [], []
+    cum_p = cum_f = 0.0
+    today_d = date.fromisoformat(today)
+    for i in range(n_days):
+        cum_p += plan_daily[i]
+        cum_f += fact_daily[i]
+        d = d0 + timedelta(days=i)
+        if d.weekday() == 0 or i == n_days - 1 or i == 0:
+            labels.append(d.isoformat())
+            plan.append(round(cum_p))
+            fact.append(round(cum_f) if d <= today_d else None)
+
+    return {'labels': labels, 'plan': plan, 'fact': fact,
+            'total': round(sum(plan_daily))}
+
+
 def get_schedule_data(object_id):
     """Данные Ганта и план-факта по объекту."""
     today = date.today().isoformat()
@@ -168,7 +241,8 @@ def get_schedule_data(object_id):
     }
 
     return {'range': {'start': rng_start, 'end': rng_end, 'today': today},
-            'stages': out, 'totals': totals}
+            'stages': out, 'totals': totals,
+            'scurve': get_s_curve(object_id, rng_start, rng_end, today)}
 
 
 def register(app):

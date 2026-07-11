@@ -67,6 +67,22 @@
   </div>
 </div>
 
+{# ═══ S-кривая освоения ═══ #}
+<div class="d-flex justify-content-between align-items-center mt-4 mb-2 flex-wrap gap-2">
+  <h5 class="fw-bold mb-0">Освоение (S-кривая)</h5>
+  <div class="btn-group" role="group" id="scurve-mode">
+    <button type="button" class="btn btn-sm btn-primary" data-mode="pct">%</button>
+    <button type="button" class="btn btn-sm btn-outline-secondary" data-mode="rub">₽</button>
+  </div>
+</div>
+<div class="card mb-2">
+  <div class="card-body p-3">
+    <div style="position:relative;height:280px">
+      <canvas id="scurve-chart"></canvas>
+    </div>
+  </div>
+</div>
+
 {# ═══ Таблица план-факт ═══ #}
 <h5 class="fw-bold mt-4 mb-2">План-факт по работам</h5>
 <div class="card">
@@ -394,6 +410,75 @@
 
   render();
   centerToday();
+})();
+</script>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+<script>
+(function () {
+  const SC = {{ data.scurve|tojson }};
+  const TODAY = '{{ data.range.today }}';
+  const total = SC.total || 1;
+  let mode = 'pct';
+
+  function values(arr) {
+    return arr.map(v => v === null ? null : (mode === 'pct' ? +(v / total * 100).toFixed(1) : v));
+  }
+  function fmtVal(v) {
+    return mode === 'pct' ? v + '%' : Number(v).toLocaleString('ru-RU') + ' ₽';
+  }
+
+  const ctx = document.getElementById('scurve-chart');
+  const chart = new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels: SC.labels.map(d => { const [y, m, dd] = d.split('-'); return `${dd}.${m}.${y.slice(2)}`; }),
+      datasets: [
+        {
+          label: 'План', data: values(SC.plan),
+          borderColor: '#94A3B8', backgroundColor: 'transparent',
+          borderDash: [6, 4], borderWidth: 2, pointRadius: 0, tension: 0.25,
+        },
+        {
+          label: 'Факт', data: values(SC.fact),
+          borderColor: '#3B82F6', backgroundColor: 'rgba(59,130,246,0.08)',
+          fill: true, borderWidth: 2.5, pointRadius: 0, tension: 0.25, spanGaps: false,
+        },
+      ],
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      interaction: { mode: 'index', intersect: false },
+      plugins: {
+        legend: { position: 'bottom', labels: { boxWidth: 24, font: { size: 12 } } },
+        tooltip: {
+          callbacks: { label: c => `${c.dataset.label}: ${fmtVal(c.parsed.y)}` },
+        },
+      },
+      scales: {
+        x: { ticks: { maxTicksLimit: 12, font: { size: 11 } }, grid: { display: false } },
+        y: {
+          beginAtZero: true,
+          ticks: {
+            font: { size: 11 },
+            callback: v => mode === 'pct' ? v + '%' : (v >= 1e6 ? (v / 1e6).toFixed(0) + ' млн' : v.toLocaleString('ru-RU')),
+          },
+        },
+      },
+    },
+  });
+
+  document.querySelectorAll('#scurve-mode button').forEach(btn => {
+    btn.addEventListener('click', () => {
+      mode = btn.dataset.mode;
+      document.querySelectorAll('#scurve-mode button').forEach(b =>
+        b.className = 'btn btn-sm ' + (b === btn ? 'btn-primary' : 'btn-outline-secondary'));
+      chart.data.datasets[0].data = values(SC.plan);
+      chart.data.datasets[1].data = values(SC.fact);
+      chart.options.scales.y.max = mode === 'pct' ? 100 : undefined;
+      chart.update();
+    });
+  });
 })();
 </script>
 {% endblock %}
