@@ -106,8 +106,9 @@ def create_app():
 
 
 def register_routes(app):
-    from routes import auth, notifications, dashboards, objects, defects, packages, supply, export, guest, admin, report_page, plans, journal, pwa, smeta, digest, id_module
+    from routes import auth, notifications, dashboards, objects, defects, packages, supply, export, guest, admin, report_page, plans, journal, pwa, smeta, digest, id_module, schedule
     auth.register(app)
+    schedule.register(app)
     notifications.register(app)
     dashboards.register(app)
     objects.register(app)
@@ -801,7 +802,9 @@ def run_migrations(conn):
     # подэтапы в работе или завершённые без факт-старта: берём плановый старт,
     # иначе плановый финиш, иначе дату завершения
     cur.execute('''
-        UPDATE substages SET actual_start_date = COALESCE(plan_start_date, actual_end_date, plan_end_date)
+        UPDATE substages SET actual_start_date =
+            LEAST(COALESCE(plan_start_date, actual_end_date, plan_end_date),
+                  to_char(now(), 'YYYY-MM-DD'))
         WHERE actual_start_date IS NULL
           AND status IN ('in_progress', 'done', 'closed', 'approved')
     ''')

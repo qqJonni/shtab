@@ -1,0 +1,301 @@
+{% extends "base.html" %}
+{% block title %}График — {{ obj.name }} — ШТАБ{% endblock %}
+{% block topbar_title %}График производства работ{% endblock %}
+{% block content %}
+<div class="d-flex align-items-center gap-2 mb-3 flex-wrap">
+  <a href="{{ url_for('object_detail', obj_id=obj.id) }}" class="btn btn-sm btn-outline-secondary"><i class="bi bi-arrow-left"></i></a>
+  <div class="flex-grow-1 min-width-0">
+    <h4 class="fw-bold mb-0 text-truncate">График производства работ</h4>
+    <div class="text-muted text-truncate" style="font-size:13px">{{ obj.name }}</div>
+  </div>
+  <div class="btn-group" role="group" id="scale-switch">
+    <button type="button" class="btn btn-sm btn-outline-secondary" data-scale="day">День</button>
+    <button type="button" class="btn btn-sm btn-primary" data-scale="week">Неделя</button>
+    <button type="button" class="btn btn-sm btn-outline-secondary" data-scale="month">Месяц</button>
+  </div>
+</div>
+
+{# Легенда #}
+<div class="d-flex gap-3 mb-3 flex-wrap" style="font-size:12px">
+  <span><span class="gantt-legend" style="background:var(--primary, #3B82F6)"></span> В срок</span>
+  <span><span class="gantt-legend" style="background:#F59E0B"></span> Под риском</span>
+  <span><span class="gantt-legend" style="background:#EF4444"></span> Просрочено</span>
+  <span><span class="gantt-legend" style="background:#10B981"></span> Завершено</span>
+  <span><span class="gantt-legend" style="background:#94A3B8"></span> Приостановлено</span>
+  <span><span class="gantt-legend gantt-legend-plan"></span> План</span>
+</div>
+
+<div class="card">
+  <div class="gantt-wrap" id="gantt-wrap">
+    <div class="gantt-names" id="gantt-names"></div>
+    <div class="gantt-scroll" id="gantt-scroll">
+      <div class="gantt-canvas" id="gantt-canvas"></div>
+    </div>
+  </div>
+</div>
+
+<div class="gantt-tooltip" id="gantt-tip" style="display:none"></div>
+
+<style>
+.gantt-legend { display:inline-block; width:14px; height:8px; border-radius:3px; vertical-align:middle; margin-right:3px; }
+.gantt-legend-plan { background:transparent; border:1.5px dashed #94A3B8; height:6px; }
+.gantt-wrap { display:flex; overflow:hidden; border-radius:12px; }
+.gantt-names { flex:0 0 min(230px, 42%); min-width:0; border-right:1px solid #E2E8F0; background:#fff; z-index:2; }
+.gantt-scroll { flex:1; overflow-x:auto; }
+.gantt-canvas { position:relative; }
+.gantt-row { height:36px; border-bottom:1px solid #F1F5F9; position:relative; }
+.gantt-name-row { height:36px; border-bottom:1px solid #F1F5F9; display:flex; align-items:center;
+                  padding:0 10px; font-size:13px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.gantt-name-row.stage { font-weight:600; cursor:pointer; background:#F8FAFC; }
+.gantt-name-row.sub { padding-left:26px; color:#475569; }
+.gantt-name-row .caret { margin-right:6px; transition:transform .15s; font-size:11px; color:#94A3B8; }
+.gantt-name-row.collapsed .caret { transform:rotate(-90deg); }
+.gantt-header { height:44px; border-bottom:1px solid #E2E8F0; position:relative; background:#F8FAFC; }
+.gantt-header-name { height:44px; border-bottom:1px solid #E2E8F0; background:#F8FAFC;
+                     display:flex; align-items:center; padding:0 10px; font-size:12px; font-weight:600; color:#64748B; }
+.gantt-month { position:absolute; top:0; height:22px; font-size:11px; font-weight:600; color:#475569;
+               border-left:1px solid #E2E8F0; padding:3px 0 0 6px; overflow:hidden; white-space:nowrap; }
+.gantt-tick { position:absolute; top:22px; height:22px; font-size:10px; color:#94A3B8;
+              border-left:1px solid #F1F5F9; padding:4px 0 0 4px; overflow:hidden; white-space:nowrap; }
+.gantt-grid-line { position:absolute; top:0; bottom:0; border-left:1px solid #F8FAFC; }
+.gantt-bar { position:absolute; height:10px; border-radius:5px; cursor:pointer; }
+.gantt-bar.plan { height:6px; background:transparent; border:1.5px dashed #94A3B8; opacity:.8; }
+.gantt-bar.actual .fill { position:absolute; left:0; top:0; bottom:0; border-radius:5px; opacity:.45; }
+.gantt-today { position:absolute; top:0; bottom:0; width:2px; background:var(--danger, #EF4444); opacity:.7; z-index:1; }
+.gantt-today-label { position:absolute; top:2px; font-size:10px; color:var(--danger, #EF4444); font-weight:600; }
+.gantt-tooltip { position:fixed; z-index:1000; background:#fff; border-radius:12px; padding:12px 14px;
+                 box-shadow:0 4px 20px rgba(0,0,0,.15); font-size:12.5px; max-width:280px; }
+.gantt-tooltip .t-title { font-weight:600; font-size:13px; margin-bottom:6px; }
+.gantt-tooltip .t-row { display:flex; justify-content:space-between; gap:12px; margin-bottom:2px; }
+.gantt-tooltip .t-row span:first-child { color:#64748B; }
+@media (max-width: 576px) { .gantt-names { flex-basis:min(120px, 40%); } .gantt-name-row { font-size:11.5px; padding:0 6px; } .gantt-name-row.sub { padding-left:16px; } }
+</style>
+
+<script>
+(function () {
+  const DATA = {{ data|tojson }};
+  const RISK_COLORS = {
+    on_track:  '#3B82F6', risk: '#F59E0B', overdue: '#EF4444',
+    done: '#10B981', suspended: '#94A3B8'
+  };
+  const STATUS_LABELS = {
+    planned: 'Запланирован', in_progress: 'В работе', done: 'Завершён', suspended: 'Приостановлен',
+    not_started: 'Не начат', closed: 'На согласовании', approved: 'Согласован'
+  };
+  const SCALES = { day: 28, week: 8, month: 2.2 };   // px в день
+  let pxPerDay = SCALES.week;
+  const collapsed = new Set();
+
+  const names = document.getElementById('gantt-names');
+  const canvas = document.getElementById('gantt-canvas');
+  const scroll = document.getElementById('gantt-scroll');
+  const tip = document.getElementById('gantt-tip');
+
+  const d0 = new Date(DATA.range.start);
+  const d1 = new Date(DATA.range.end);
+  const today = new Date(DATA.range.today);
+  const DAY = 86400000;
+  const totalDays = Math.round((d1 - d0) / DAY) + 1;
+
+  function x(dateStr) { return Math.round((new Date(dateStr) - d0) / DAY * pxPerDay); }
+  function fmt(s) {
+    if (!s) return '—';
+    const [y, m, d] = s.split('-');
+    return `${d}.${m}.${y.slice(2)}`;
+  }
+
+  function rows() {
+    const out = [];
+    DATA.stages.forEach(st => {
+      out.push({ kind: 'stage', it: st });
+      if (!collapsed.has(st.id)) st.subs.forEach(sb => out.push({ kind: 'sub', it: sb, stage: st }));
+    });
+    return out;
+  }
+
+  function bar(item, top, isStage, stage) {
+    const frag = document.createDocumentFragment();
+    const color = RISK_COLORS[item.risk] || RISK_COLORS.on_track;
+    if (item.plan_start && item.plan_end) {
+      const b = document.createElement('div');
+      b.className = 'gantt-bar plan';
+      b.style.left = x(item.plan_start) + 'px';
+      b.style.width = Math.max(x(item.plan_end) - x(item.plan_start) + pxPerDay, 4) + 'px';
+      b.style.top = (top + 5) + 'px';
+      attachTip(b, item, isStage, stage);
+      frag.appendChild(b);
+    }
+    if (item.actual_start && item.actual_end) {
+      const b = document.createElement('div');
+      b.className = 'gantt-bar actual';
+      b.style.left = x(item.actual_start) + 'px';
+      const w = Math.max(x(item.actual_end) - x(item.actual_start) + pxPerDay, 6);
+      b.style.width = w + 'px';
+      b.style.top = (top + 17) + 'px';
+      b.style.background = color;
+      const fill = document.createElement('div');
+      fill.className = 'fill';
+      fill.style.width = (item.progress || 0) + '%';
+      fill.style.background = '#1E293B';
+      b.appendChild(fill);
+      attachTip(b, item, isStage, stage);
+      frag.appendChild(b);
+    }
+    return frag;
+  }
+
+  function attachTip(el, item, isStage, stage) {
+    el.addEventListener('mouseenter', e => showTip(e, item, isStage, stage));
+    el.addEventListener('mousemove', e => moveTip(e));
+    el.addEventListener('mouseleave', () => tip.style.display = 'none');
+    el.addEventListener('click', () => {
+      const url = isStage ? `/stages/${item.id}` : `/substages/${item.id}`;
+      window.location = url;
+    });
+  }
+
+  function showTip(e, item, isStage, stage) {
+    const url = isStage ? `/stages/${item.id}` : `/substages/${item.id}`;
+    tip.innerHTML = `
+      <div class="t-title">${item.name}</div>
+      <div class="t-row"><span>План</span><span>${fmt(item.plan_start)} — ${fmt(item.plan_end)}</span></div>
+      <div class="t-row"><span>Факт</span><span>${fmt(item.actual_start)} — ${fmt(item.actual_end)}</span></div>
+      <div class="t-row"><span>Готовность</span><span>${item.progress || 0}%</span></div>
+      <div class="t-row"><span>Статус</span><span>${STATUS_LABELS[item.status] || item.status}</span></div>
+      ${isStage && item.contractor ? `<div class="t-row"><span>Подрядчик</span><span>${item.contractor}</span></div>` : ''}
+      <div class="mt-1"><a href="${url}" style="font-size:12px">Открыть →</a></div>`;
+    tip.style.display = 'block';
+    moveTip(e);
+  }
+  function moveTip(e) {
+    const w = tip.offsetWidth, h = tip.offsetHeight;
+    let left = e.clientX + 14, topPos = e.clientY + 14;
+    if (left + w > window.innerWidth - 8) left = e.clientX - w - 14;
+    if (topPos + h > window.innerHeight - 8) topPos = e.clientY - h - 14;
+    tip.style.left = left + 'px'; tip.style.top = topPos + 'px';
+  }
+
+  function renderHeader() {
+    const head = document.createElement('div');
+    head.className = 'gantt-header';
+    head.style.width = totalDays * pxPerDay + 'px';
+    // месяцы
+    let cur = new Date(d0.getFullYear(), d0.getMonth(), 1);
+    const MONTHS = ['Янв','Фев','Мар','Апр','Май','Июн','Июл','Авг','Сен','Окт','Ноя','Дек'];
+    while (cur <= d1) {
+      const next = new Date(cur.getFullYear(), cur.getMonth() + 1, 1);
+      const from = cur < d0 ? d0 : cur;
+      const to = next > d1 ? d1 : next;
+      const el = document.createElement('div');
+      el.className = 'gantt-month';
+      el.style.left = x(from.toISOString().slice(0, 10)) + 'px';
+      el.style.width = Math.max((to - from) / DAY * pxPerDay, 0) + 'px';
+      el.textContent = MONTHS[cur.getMonth()] + ' ' + cur.getFullYear();
+      head.appendChild(el);
+      cur = next;
+    }
+    // деления: дни (масштаб day) или недели
+    if (pxPerDay >= SCALES.day) {
+      for (let t = new Date(d0); t <= d1; t = new Date(+t + DAY)) {
+        const el = document.createElement('div');
+        el.className = 'gantt-tick';
+        el.style.left = x(t.toISOString().slice(0, 10)) + 'px';
+        el.style.width = pxPerDay + 'px';
+        el.textContent = t.getDate();
+        head.appendChild(el);
+      }
+    } else if (pxPerDay >= SCALES.week) {
+      for (let t = new Date(d0); t <= d1; t = new Date(+t + DAY)) {
+        if (t.getDay() === 1) {
+          const el = document.createElement('div');
+          el.className = 'gantt-tick';
+          el.style.left = x(t.toISOString().slice(0, 10)) + 'px';
+          el.style.width = pxPerDay * 7 + 'px';
+          el.textContent = t.getDate();
+          head.appendChild(el);
+        }
+      }
+    }
+    return head;
+  }
+
+  function render() {
+    names.innerHTML = '';
+    canvas.innerHTML = '';
+    canvas.style.width = totalDays * pxPerDay + 'px';
+
+    const headName = document.createElement('div');
+    headName.className = 'gantt-header-name';
+    headName.textContent = 'Работы';
+    names.appendChild(headName);
+    canvas.appendChild(renderHeader());
+
+    const list = rows();
+    canvas.style.height = (44 + list.length * 36) + 'px';
+
+    // сетка по неделям
+    for (let t = new Date(d0); t <= d1; t = new Date(+t + DAY)) {
+      if (t.getDay() === 1) {
+        const g = document.createElement('div');
+        g.className = 'gantt-grid-line';
+        g.style.left = x(t.toISOString().slice(0, 10)) + 'px';
+        canvas.appendChild(g);
+      }
+    }
+
+    list.forEach((r, i) => {
+      const top = 44 + i * 36;
+      // имя слева
+      const n = document.createElement('div');
+      n.className = 'gantt-name-row ' + r.kind + (r.kind === 'stage' && collapsed.has(r.it.id) ? ' collapsed' : '');
+      if (r.kind === 'stage') {
+        n.innerHTML = `<span class="caret">▾</span><span class="text-truncate">${r.it.name}</span>`;
+        n.addEventListener('click', () => {
+          collapsed.has(r.it.id) ? collapsed.delete(r.it.id) : collapsed.add(r.it.id);
+          render();
+        });
+      } else {
+        n.innerHTML = `<span class="text-truncate">${r.it.name}</span>`;
+      }
+      names.appendChild(n);
+      // полосы
+      const row = document.createElement('div');
+      row.className = 'gantt-row';
+      row.style.top = top + 'px';
+      row.style.position = 'absolute';
+      row.style.left = 0; row.style.right = 0;
+      canvas.appendChild(row);
+      canvas.appendChild(bar(r.it, top, r.kind === 'stage', r.stage));
+    });
+
+    // линия «сегодня»
+    const tl = document.createElement('div');
+    tl.className = 'gantt-today';
+    tl.style.left = x(DATA.range.today) + 'px';
+    canvas.appendChild(tl);
+    const tlab = document.createElement('div');
+    tlab.className = 'gantt-today-label';
+    tlab.style.left = (x(DATA.range.today) + 5) + 'px';
+    tlab.textContent = 'сегодня';
+    canvas.appendChild(tlab);
+  }
+
+  document.querySelectorAll('#scale-switch button').forEach(btn => {
+    btn.addEventListener('click', () => {
+      pxPerDay = SCALES[btn.dataset.scale];
+      document.querySelectorAll('#scale-switch button').forEach(b =>
+        b.className = 'btn btn-sm ' + (b === btn ? 'btn-primary' : 'btn-outline-secondary'));
+      render();
+      centerToday();
+    });
+  });
+
+  function centerToday() {
+    scroll.scrollLeft = Math.max(x(DATA.range.today) - scroll.clientWidth / 2, 0);
+  }
+
+  render();
+  centerToday();
+})();
+</script>
+{% endblock %}
