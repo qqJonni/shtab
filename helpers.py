@@ -70,6 +70,49 @@ TEAM_ROLES = [
 ]
 
 
+# ═══ Настройки тенанта ═══════════════════════════════════════════════════
+# Дефолты = текущее поведение системы. Ненастроенный тенант работает как раньше.
+
+TENANT_DEFAULTS = {
+    # наполняется модулем «Настройки» по шагам (цепочки, видимость модулей и т.д.)
+}
+
+
+def get_tenant_setting(org_id, key, default=None):
+    """Настройка тенанта (организации-застройщика).
+    Не задана или нет org_id → default, иначе TENANT_DEFAULTS[key]."""
+    fallback = default if default is not None else TENANT_DEFAULTS.get(key)
+    if not org_id:
+        return fallback
+    from db import query_db
+    row = query_db('SELECT value FROM tenant_settings WHERE organization_id = ? AND key = ?',
+                   (org_id, key), one=True)
+    return row['value'] if row is not None else fallback
+
+
+def set_tenant_setting(org_id, key, value):
+    from db import get_db
+    db = get_db()
+    db.execute(
+        'INSERT INTO tenant_settings (organization_id, key, value) VALUES (?, ?, ?) '
+        'ON CONFLICT (organization_id, key) DO UPDATE SET value = EXCLUDED.value',
+        (org_id, key, str(value) if value is not None else None))
+    db.commit()
+
+
+def current_tenant_setting(user, key, default=None):
+    """Настройка тенанта текущего пользователя.
+
+    - developer-роли: их organization_id и есть тенант
+    - admin: платформенный дефолт (у админа нет тенанта)
+    - contractor: настройки его собственной орг не тенантные — тоже дефолт;
+      контекстные чтения «от тенанта объекта» делаются напрямую через
+      get_tenant_setting(developer_id, ...)"""
+    if user.role == 'admin' or user.role == 'contractor' or not user.organization_id:
+        return default if default is not None else TENANT_DEFAULTS.get(key)
+    return get_tenant_setting(user.organization_id, key, default)
+
+
 def recalc_stage_actuals(stage_id):
     """Пересчитывает факт-даты этапа из его подэтапов.
 

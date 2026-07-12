@@ -1,0 +1,107 @@
+{% extends "base.html" %}
+{% block title %}Настройки — ШТАБ{% endblock %}
+{% block topbar_title %}Настройки{% endblock %}
+{% block content %}
+<h4 class="fw-bold mb-3">Настройки</h4>
+
+{% set area_labels = {
+  'personal':     ('bi-person',    'Личные'),
+  'organization': ('bi-buildings', 'Организация'),
+  'platform':     ('bi-gear',      'Платформа'),
+} %}
+
+<ul class="nav nav-tabs mb-4">
+  {% for a in areas %}
+  <li class="nav-item">
+    <a class="nav-link {% if area == a %}active{% endif %}" href="{{ url_for('settings_page', area=a) }}">
+      <i class="bi {{ area_labels[a][0] }} me-1"></i>{{ area_labels[a][1] }}
+    </a>
+  </li>
+  {% endfor %}
+</ul>
+
+{% with msgs = get_flashed_messages(with_categories=true) %}
+  {% for cat, msg in msgs %}
+    <div class="alert alert-{{ cat }} py-2 px-3">{{ msg }}</div>
+  {% endfor %}
+{% endwith %}
+
+{% if area == 'personal' %}
+  {# ═══ Личные ═══ #}
+  <div class="row g-3">
+    <div class="col-md-6">
+      <div class="card h-100">
+        <div class="card-body p-4">
+          <h6 class="fw-bold mb-2"><i class="bi bi-person-circle me-1"></i>Профиль</h6>
+          <p class="text-muted mb-3" style="font-size:13px">ФИО, логин, пароль, аватар.</p>
+          <a href="{{ url_for('profile') }}" class="btn btn-sm btn-outline-primary">Открыть профиль</a>
+        </div>
+      </div>
+    </div>
+    <div class="col-md-6">
+      <div class="card h-100">
+        <div class="card-body p-4">
+          <h6 class="fw-bold mb-2"><i class="bi bi-bell me-1"></i>Уведомления</h6>
+          <p class="text-muted mb-0" style="font-size:13px">Push-уведомления и типы событий — появятся на следующем шаге настройки.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+{% elif area == 'organization' %}
+  {# ═══ Организация (тенант) ═══ #}
+  {% if not org %}
+    <div class="card"><div class="card-body text-center py-4 text-muted">
+      <p class="mb-0" style="font-size:14px">У вашей учётной записи нет организации-тенанта.</p>
+    </div></div>
+  {% else %}
+  <div class="text-muted mb-3" style="font-size:13px">
+    Настройки организации <strong>{{ org.name }}</strong> — действуют для всех её объектов и сотрудников.
+  </div>
+  <div class="row g-3">
+    <div class="col-md-6">
+      <div class="card h-100"><div class="card-body p-4">
+        <h6 class="fw-bold mb-2"><i class="bi bi-diagram-3 me-1"></i>Цепочки согласования</h6>
+        <p class="text-muted mb-0" style="font-size:13px">Маршруты КС и ИД: состав и порядок ролей. Конструктор появится на следующих шагах.</p>
+      </div></div>
+    </div>
+    <div class="col-md-6">
+      <div class="card h-100"><div class="card-body p-4">
+        <h6 class="fw-bold mb-2"><i class="bi bi-toggles me-1"></i>Доступы и модули</h6>
+        <p class="text-muted mb-0" style="font-size:13px">Видимость модулей и финансовых данных по ролям — на следующих шагах.</p>
+      </div></div>
+    </div>
+    <div class="col-md-6">
+      <div class="card h-100"><div class="card-body p-4">
+        <h6 class="fw-bold mb-2"><i class="bi bi-card-heading me-1"></i>Реквизиты и логотип</h6>
+        <p class="text-muted mb-0" style="font-size:13px">ИНН, КПП, адрес, представитель, логотип для документов — на следующих шагах.</p>
+      </div></div>
+    </div>
+    <div class="col-md-6">
+      <div class="card h-100"><div class="card-body p-4">
+        <h6 class="fw-bold mb-2"><i class="bi bi-envelope-paper me-1"></i>Уведомления тенанта</h6>
+        <p class="text-muted mb-0" style="font-size:13px">Еженедельный дайджест: получатели и расписание — на следующих шагах.</p>
+      </div></div>
+    </div>
+  </div>
+  {% endif %}
+
+{% elif area == 'platform' %}
+  {# ═══ Платформа (admin) ═══ #}
+  <div class="row g-3">
+    <div class="col-md-6">
+      <div class="card h-100"><div class="card-body p-4">
+        <h6 class="fw-bold mb-2"><i class="bi bi-sliders me-1"></i>Глобальные параметры</h6>
+        <p class="text-muted mb-0" style="font-size:13px">НДС и другие платформенные значения — на следующих шагах.</p>
+      </div></div>
+    </div>
+    <div class="col-md-6">
+      <div class="card h-100"><div class="card-body p-4">
+        <h6 class="fw-bold mb-2"><i class="bi bi-diagram-3 me-1"></i>Тенанты</h6>
+        <p class="text-muted mb-3" style="font-size:13px">Организации-застройщики и коды регистрации.</p>
+        <a href="{{ url_for('org_list') }}" class="btn btn-sm btn-outline-primary">Управление тенантами</a>
+      </div></div>
+    </div>
+  </div>
+{% endif %}
+{% endblock %}

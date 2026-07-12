@@ -106,9 +106,10 @@ def create_app():
 
 
 def register_routes(app):
-    from routes import auth, notifications, dashboards, objects, defects, packages, supply, export, guest, admin, report_page, plans, journal, pwa, smeta, digest, id_module, schedule
+    from routes import auth, notifications, dashboards, objects, defects, packages, supply, export, guest, admin, report_page, plans, journal, pwa, smeta, digest, id_module, schedule, settings as settings_module
     auth.register(app)
     schedule.register(app)
+    settings_module.register(app)
     notifications.register(app)
     dashboards.register(app)
     objects.register(app)
@@ -756,6 +757,17 @@ def run_migrations(conn):
         JOIN substages ss ON dp.substage_id = ss.id
         WHERE NOT EXISTS (SELECT 1 FROM package_items pi WHERE pi.package_id = dp.id)
         ON CONFLICT (package_id, substage_id) DO NOTHING
+    ''')
+
+    # Настройки тенанта (key-value по организации-застройщику)
+    cur.execute('''
+        CREATE TABLE IF NOT EXISTS tenant_settings (
+            id SERIAL PRIMARY KEY,
+            organization_id INTEGER NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+            key TEXT NOT NULL,
+            value TEXT,
+            UNIQUE(organization_id, key)
+        )
     ''')
 
     # ГПР (график производства работ): даты план/факт

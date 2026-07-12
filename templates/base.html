@@ -28,7 +28,7 @@
     {'label': 'Пользователи',  'icon': 'bi-people',        'url': url_for('users_list')},
     {'label': 'Организации',   'icon': 'bi-buildings',     'url': url_for('organizations_list')},
     {'label': 'Тенанты',       'icon': 'bi-diagram-3',     'url': url_for('org_list')},
-    {'label': 'Настройки',     'icon': 'bi-gear',          'url': url_for('dashboard')},
+    {'label': 'Настройки',     'icon': 'bi-gear',          'url': url_for('settings_page')},
   ],
   'manager': [
     {'section': 'Основное'},
@@ -133,6 +133,7 @@
     {% endfor %}
     <hr class="crm-nav-divider">
     <a class="crm-nav-link" href="{{ url_for('profile') }}"><i class="bi bi-person"></i> Профиль</a>
+    <a class="crm-nav-link" href="{{ url_for('settings_page') }}"><i class="bi bi-gear"></i> Настройки</a>
     <a class="crm-nav-link" href="{{ url_for('logout') }}"><i class="bi bi-box-arrow-left"></i> Выйти</a>
   </div>
 </div>
@@ -169,6 +170,7 @@
         {% endif %}
         <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0">{{ current_user.full_name or current_user.username }}</span>
       </a>
+      <a class="crm-sidebar-link" href="{{ url_for('settings_page') }}"><i class="bi bi-gear"></i> Настройки</a>
       <a class="crm-sidebar-link" href="{{ url_for('logout') }}"><i class="bi bi-box-arrow-left"></i> Выйти</a>
     </div>
   </aside>
