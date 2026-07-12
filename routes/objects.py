@@ -928,9 +928,14 @@ def register(app):
             unit = request.form.get('unit', '').strip()
             unit_price = request.form.get('unit_price', '').strip() or None
             plan_end = request.form.get('plan_end_date', '').strip() or None
+            plan_start = request.form.get('plan_start_date', '').strip() or None
 
             if not name:
                 flash('Введите название подэтапа.', 'danger')
+                return render_template('objects/substage_form.html', stage=stage, sub=None)
+
+            if plan_start and plan_end and plan_start > plan_end:
+                flash('Плановое начало не может быть позже планового конца.', 'danger')
                 return render_template('objects/substage_form.html', stage=stage, sub=None)
 
             if plan_end and stage['plan_end_date'] and plan_end > stage['plan_end_date']:
@@ -949,9 +954,9 @@ def register(app):
             total_price = _calc_total(volume, unit_price)
 
             execute_db(
-                'INSERT INTO substages (stage_id, name, description, volume, unit, unit_price, total_price, plan_end_date, created_by) '
-                'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
-                (stage_id, name, description, volume, unit, unit_price, total_price, plan_end, current_user.id),
+                'INSERT INTO substages (stage_id, name, description, volume, unit, unit_price, total_price, plan_start_date, plan_end_date, created_by) '
+                'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+                (stage_id, name, description, volume, unit, unit_price, total_price, plan_start, plan_end, current_user.id),
             )
             flash('Подэтап создан.', 'success')
             return redirect(url_for('stage_detail', stage_id=stage_id))
@@ -974,9 +979,19 @@ def register(app):
             unit = request.form.get('unit', '').strip()
             unit_price = request.form.get('unit_price', '').strip() or None
             plan_end = request.form.get('plan_end_date', '').strip() or None
+            plan_start = request.form.get('plan_start_date', '').strip() or None
+            actual_start = request.form.get('actual_start_date', '').strip() or None
+            actual_end = request.form.get('actual_end_date', '').strip() or None
 
             if not name:
                 flash('Введите название подэтапа.', 'danger')
+                return render_template('objects/substage_form.html', stage=stage, sub=sub)
+
+            if plan_start and plan_end and plan_start > plan_end:
+                flash('Плановое начало не может быть позже планового конца.', 'danger')
+                return render_template('objects/substage_form.html', stage=stage, sub=sub)
+            if actual_start and actual_end and actual_start > actual_end:
+                flash('Фактическое начало не может быть позже фактического конца.', 'danger')
                 return render_template('objects/substage_form.html', stage=stage, sub=sub)
 
             if plan_end and stage['plan_end_date'] and plan_end > stage['plan_end_date']:
@@ -995,9 +1010,13 @@ def register(app):
             total_price = _calc_total(volume, unit_price)
 
             execute_db(
-                'UPDATE substages SET name=?, description=?, volume=?, unit=?, unit_price=?, total_price=?, plan_end_date=? WHERE id=?',
-                (name, description, volume, unit, unit_price, total_price, plan_end, sub_id),
+                'UPDATE substages SET name=?, description=?, volume=?, unit=?, unit_price=?, total_price=?, '
+                'plan_start_date=?, plan_end_date=?, actual_start_date=?, actual_end_date=? WHERE id=?',
+                (name, description, volume, unit, unit_price, total_price,
+                 plan_start, plan_end, actual_start, actual_end, sub_id),
             )
+            from helpers import recalc_stage_actuals
+            recalc_stage_actuals(sub['stage_id'])
             flash('Подэтап обновлён.', 'success')
             return redirect(url_for('stage_detail', stage_id=sub['stage_id']))
 

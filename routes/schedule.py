@@ -155,15 +155,24 @@ def _baseline_dev(item_key, baseline, ref_end):
     return _days(ref_end, b['plan_end'])
 
 
-def get_schedule_data(object_id):
-    """Данные Ганта и план-факта по объекту."""
+def get_schedule_data(object_id, contractor_org_id=None):
+    """Данные Ганта и план-факта по объекту.
+    contractor_org_id — ограничить этапами этого подрядчика (для роли contractor)."""
     today = date.today().isoformat()
     bl_meta, baseline = _active_baseline(object_id)
-    stages = query_db(
-        'SELECT cs.*, org.name as contractor_name '
-        'FROM construction_stages cs '
-        'LEFT JOIN organizations org ON cs.contractor_id = org.id '
-        'WHERE cs.object_id = ? ORDER BY cs.order_num, cs.id', (object_id,))
+    if contractor_org_id:
+        stages = query_db(
+            'SELECT cs.*, org.name as contractor_name '
+            'FROM construction_stages cs '
+            'LEFT JOIN organizations org ON cs.contractor_id = org.id '
+            'WHERE cs.object_id = ? AND cs.contractor_id = ? ORDER BY cs.order_num, cs.id',
+            (object_id, contractor_org_id))
+    else:
+        stages = query_db(
+            'SELECT cs.*, org.name as contractor_name '
+            'FROM construction_stages cs '
+            'LEFT JOIN organizations org ON cs.contractor_id = org.id '
+            'WHERE cs.object_id = ? ORDER BY cs.order_num, cs.id', (object_id,))
     closed = _closed_volumes(object_id)
 
     out = []
@@ -294,7 +303,8 @@ def register(app):
             abort(404)
         assert_object_access(current_user, obj_id)
 
-        data = get_schedule_data(obj_id)
+        contractor_org = current_user.organization_id if current_user.role == 'contractor' else None
+        data = get_schedule_data(obj_id, contractor_org_id=contractor_org)
         return render_template('schedule/view.html', obj=obj, data=data)
 
     @app.route('/objects/<int:obj_id>/schedule/baseline', methods=['POST'])
