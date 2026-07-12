@@ -13,6 +13,10 @@
     <button type="button" class="btn btn-sm btn-primary" data-scale="week">Неделя</button>
     <button type="button" class="btn btn-sm btn-outline-secondary" data-scale="month">Месяц</button>
   </div>
+  {% if current_user.role in ('manager', 'pto', 'admin') %}
+    <a href="{{ url_for('schedule_export_pdf', obj_id=obj.id) }}" class="btn btn-sm btn-outline-secondary" title="PDF для доклада"><i class="bi bi-file-earmark-pdf me-1"></i>PDF</a>
+    <a href="{{ url_for('schedule_export_xlsx', obj_id=obj.id) }}" class="btn btn-sm btn-outline-secondary" title="Excel план-факт"><i class="bi bi-file-earmark-excel me-1"></i>Excel</a>
+  {% endif %}
   {% if current_user.role in ('manager', 'admin') %}
     <form method="post" action="{{ url_for('schedule_baseline_create', obj_id=obj.id) }}"
           onsubmit="return confirm('Утвердить текущий план как baseline? Отклонения будут считаться от этой версии.')">
