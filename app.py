@@ -106,8 +106,9 @@ def create_app():
 
 
 def register_routes(app):
-    from routes import auth, notifications, dashboards, objects, defects, packages, supply, export, guest, admin, report_page, plans, journal, pwa, smeta, digest, id_module
+    from routes import auth, notifications, dashboards, objects, defects, packages, supply, export, guest, admin, report_page, plans, journal, pwa, smeta, digest, id_module, schedule
     auth.register(app)
+    schedule.register(app)
     notifications.register(app)
     dashboards.register(app)
     objects.register(app)
@@ -755,6 +756,70 @@ def run_migrations(conn):
         JOIN substages ss ON dp.substage_id = ss.id
         WHERE NOT EXISTS (SELECT 1 FROM package_items pi WHERE pi.package_id = dp.id)
         ON CONFLICT (package_id, substage_id) DO NOTHING
+    ''')
+
+    # ГПР (график производства работ): даты план/факт
+    for col in ('plan_start_date', 'actual_start_date', 'actual_end_date'):
+        if not _col_exists('substages', col):
+            cur.execute(f'ALTER TABLE substages ADD COLUMN {col} TEXT')
+    for col in ('actual_start_date', 'actual_end_date'):
+        if not _col_exists('construction_stages', col):
+            cur.execute(f'ALTER TABLE construction_stages ADD COLUMN {col} TEXT')
+    cur.execute('''
+        CREATE TABLE IF NOT EXISTS schedule_baselines (
+            id SERIAL PRIMARY KEY,
+            object_id INTEGER NOT NULL REFERENCES objects(id) ON DELETE CASCADE,
+            name TEXT NOT NULL,
+            created_by INTEGER REFERENCES users(id),
+            created_at TEXT DEFAULT to_char(now(),'YYYY-MM-DD HH24:MI:SS'),
+            data_json TEXT
+        )
+    ''')
+    cur.execute('''
+        CREATE TABLE IF NOT EXISTS schedule_milestones (
+            id SERIAL PRIMARY KEY,
+            object_id INTEGER NOT NULL REFERENCES objects(id) ON DELETE CASCADE,
+            name TEXT NOT NULL,
+            plan_date TEXT,
+            actual_date TEXT,
+            status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending', 'done', 'missed')),
+            order_num INTEGER NOT NULL DEFAULT 0
+        )
+    ''')
+    # Бэкфилл факт-дат из существующих статусов (только пустые):
+    # завершённые подэтапы: факт-финиш = completed_at
+    cur.execute('''
+        UPDATE substages SET actual_end_date = LEFT(completed_at, 10)
+        WHERE actual_end_date IS NULL AND completed_at IS NOT NULL
+          AND status IN ('done', 'closed', 'approved')
+    ''')
+    # завершённые без completed_at (данные до внедрения): факт-финиш ≈ плановый
+    cur.execute('''
+        UPDATE substages SET actual_end_date = plan_end_date
+        WHERE actual_end_date IS NULL AND plan_end_date IS NOT NULL
+          AND status IN ('done', 'closed', 'approved')
+    ''')
+    # подэтапы в работе или завершённые без факт-старта: берём плановый старт,
+    # иначе плановый финиш, иначе дату завершения
+    cur.execute('''
+        UPDATE substages SET actual_start_date =
+            LEAST(COALESCE(plan_start_date, actual_end_date, plan_end_date),
+                  to_char(now(), 'YYYY-MM-DD'))
+        WHERE actual_start_date IS NULL
+          AND status IN ('in_progress', 'done', 'closed', 'approved')
+    ''')
+    # факт этапа из подэтапов
+    cur.execute('''
+        UPDATE construction_stages cs SET actual_start_date = sub.min_start
+        FROM (SELECT stage_id, MIN(actual_start_date) as min_start FROM substages
+              WHERE actual_start_date IS NOT NULL GROUP BY stage_id) sub
+        WHERE cs.id = sub.stage_id AND cs.actual_start_date IS NULL
+    ''')
+    cur.execute('''
+        UPDATE construction_stages cs SET actual_end_date = sub.max_end
+        FROM (SELECT stage_id, MAX(actual_end_date) as max_end FROM substages
+              WHERE actual_end_date IS NOT NULL GROUP BY stage_id) sub
+        WHERE cs.id = sub.stage_id AND cs.actual_end_date IS NULL AND cs.status = 'done'
     ''')
 
     # Онбординг подрядчиков: какой тенант завёл организацию

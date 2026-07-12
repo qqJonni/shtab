@@ -615,6 +615,14 @@ def register(app):
                 'plan_start_date=?, plan_end_date=?, status=? WHERE id=?',
                 (name, description, order_num, plan_start, plan_end, status, stage_id),
             )
+            # авто-факт этапа: закрытие → факт-финиш, откат из done → очистка
+            from helpers import recalc_stage_actuals
+            recalc_stage_actuals(stage_id)
+            if status == 'done':
+                from datetime import date
+                execute_db(
+                    'UPDATE construction_stages SET actual_end_date = COALESCE(actual_end_date, ?) WHERE id = ?',
+                    (date.today().isoformat(), stage_id))
             flash('Этап обновлён.', 'success')
             return redirect(url_for('object_detail', obj_id=stage['object_id']))
 
@@ -920,9 +928,14 @@ def register(app):
             unit = request.form.get('unit', '').strip()
             unit_price = request.form.get('unit_price', '').strip() or None
             plan_end = request.form.get('plan_end_date', '').strip() or None
+            plan_start = request.form.get('plan_start_date', '').strip() or None
 
             if not name:
                 flash('Введите название подэтапа.', 'danger')
+                return render_template('objects/substage_form.html', stage=stage, sub=None)
+
+            if plan_start and plan_end and plan_start > plan_end:
+                flash('Плановое начало не может быть позже планового конца.', 'danger')
                 return render_template('objects/substage_form.html', stage=stage, sub=None)
 
             if plan_end and stage['plan_end_date'] and plan_end > stage['plan_end_date']:
@@ -941,9 +954,9 @@ def register(app):
             total_price = _calc_total(volume, unit_price)
 
             execute_db(
-                'INSERT INTO substages (stage_id, name, description, volume, unit, unit_price, total_price, plan_end_date, created_by) '
-                'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
-                (stage_id, name, description, volume, unit, unit_price, total_price, plan_end, current_user.id),
+                'INSERT INTO substages (stage_id, name, description, volume, unit, unit_price, total_price, plan_start_date, plan_end_date, created_by) '
+                'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+                (stage_id, name, description, volume, unit, unit_price, total_price, plan_start, plan_end, current_user.id),
             )
             flash('Подэтап создан.', 'success')
             return redirect(url_for('stage_detail', stage_id=stage_id))
@@ -966,9 +979,19 @@ def register(app):
             unit = request.form.get('unit', '').strip()
             unit_price = request.form.get('unit_price', '').strip() or None
             plan_end = request.form.get('plan_end_date', '').strip() or None
+            plan_start = request.form.get('plan_start_date', '').strip() or None
+            actual_start = request.form.get('actual_start_date', '').strip() or None
+            actual_end = request.form.get('actual_end_date', '').strip() or None
 
             if not name:
                 flash('Введите название подэтапа.', 'danger')
+                return render_template('objects/substage_form.html', stage=stage, sub=sub)
+
+            if plan_start and plan_end and plan_start > plan_end:
+                flash('Плановое начало не может быть позже планового конца.', 'danger')
+                return render_template('objects/substage_form.html', stage=stage, sub=sub)
+            if actual_start and actual_end and actual_start > actual_end:
+                flash('Фактическое начало не может быть позже фактического конца.', 'danger')
                 return render_template('objects/substage_form.html', stage=stage, sub=sub)
 
             if plan_end and stage['plan_end_date'] and plan_end > stage['plan_end_date']:
@@ -987,9 +1010,13 @@ def register(app):
             total_price = _calc_total(volume, unit_price)
 
             execute_db(
-                'UPDATE substages SET name=?, description=?, volume=?, unit=?, unit_price=?, total_price=?, plan_end_date=? WHERE id=?',
-                (name, description, volume, unit, unit_price, total_price, plan_end, sub_id),
+                'UPDATE substages SET name=?, description=?, volume=?, unit=?, unit_price=?, total_price=?, '
+                'plan_start_date=?, plan_end_date=?, actual_start_date=?, actual_end_date=? WHERE id=?',
+                (name, description, volume, unit, unit_price, total_price,
+                 plan_start, plan_end, actual_start, actual_end, sub_id),
             )
+            from helpers import recalc_stage_actuals
+            recalc_stage_actuals(sub['stage_id'])
             flash('Подэтап обновлён.', 'success')
             return redirect(url_for('stage_detail', stage_id=sub['stage_id']))
 
@@ -1078,14 +1105,30 @@ def register(app):
             return redirect(url_for('substage_detail', sub_id=sub_id))
 
         from db import get_db
+        from datetime import date
         db = get_db()
+        today = date.today().isoformat()
         if new_status == 'done':
-            db.execute('UPDATE substages SET status = ?, completed_at = CURRENT_TIMESTAMP WHERE id = ?',
-                       (new_status, sub_id))
-        else:
-            db.execute('UPDATE substages SET status = ?, completed_at = NULL WHERE id = ?',
-                       (new_status, sub_id))
+            db.execute(
+                'UPDATE substages SET status = ?, completed_at = CURRENT_TIMESTAMP, '
+                'actual_start_date = COALESCE(actual_start_date, ?), '
+                'actual_end_date = COALESCE(actual_end_date, ?) WHERE id = ?',
+                (new_status, today, today, sub_id))
+        elif new_status == 'in_progress':
+            db.execute(
+                'UPDATE substages SET status = ?, completed_at = NULL, '
+                'actual_start_date = COALESCE(actual_start_date, ?), '
+                'actual_end_date = NULL WHERE id = ?',
+                (new_status, today, sub_id))
+        else:  # not_started — полный откат факта
+            db.execute(
+                'UPDATE substages SET status = ?, completed_at = NULL, '
+                'actual_start_date = NULL, actual_end_date = NULL WHERE id = ?',
+                (new_status, sub_id))
         db.commit()
+
+        from helpers import recalc_stage_actuals
+        recalc_stage_actuals(sub['stage_id'])
 
         flash(f'Статус изменён: {STATUS_LABELS.get(new_status, new_status)}.', 'success')
         return redirect(url_for('substage_detail', sub_id=sub_id))

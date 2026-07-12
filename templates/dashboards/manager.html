@@ -97,6 +97,7 @@
           <th class="text-end">Сумма (₽)</th>
           <th>Замечания</th>
           <th>Пакеты</th>
+          <th style="width:60px"></th>
         </tr>
       </thead>
       <tbody>
@@ -120,6 +121,9 @@
           <td>
             {% if o.packages_active > 0 %}<span class="badge badge-progress">{{ o.packages_active }}</span>
             {% else %}<span class="text-muted">0</span>{% endif %}
+          </td>
+          <td class="text-end">
+            <a href="{{ url_for('object_schedule', obj_id=o.id) }}" class="btn btn-sm btn-outline-secondary py-0 px-2" title="График производства работ"><i class="bi bi-bar-chart-steps"></i></a>
           </td>
         </tr>
         {% endfor %}
