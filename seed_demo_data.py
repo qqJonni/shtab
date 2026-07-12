@@ -280,7 +280,11 @@ def seed():
                 elif st_status == 'in_progress':
                     frac = (TODAY - start).days / dur
                     pos = si / n
-                    if pos < frac - 0.25:
+                    if (si + 1) / n <= frac and random.random() < 0.18:
+                        # «застрявшая» работа: план целиком прошёл, а она в работе —
+                        # реальная просрочка на графике
+                        ss = 'in_progress'
+                    elif pos < frac - 0.25:
                         ss = 'approved'
                     elif pos < frac:
                         ss = random.choice(['done', 'closed'])
@@ -290,31 +294,58 @@ def seed():
                         ss = 'not_started'
                 else:
                     ss = 'not_started'
+                # ── Реалистичный факт: старт с задержкой, финиш с отклонением ──
+                # (стройки чаще опаздывают: 60% с опозданием до 2 недель,
+                #  25% в срок ±2 дня, 15% с опережением)
+                actual_start = actual_end = None
+                finished = ss in ('approved', 'closed', 'done')
+                started = finished or ss == 'in_progress'
+                if started:
+                    a_start = s_start + timedelta(days=random.randint(-1, 6))
+                    actual_start = min(a_start, TODAY).isoformat()
+                if finished:
+                    roll = random.random()
+                    if roll < 0.60:
+                        shift = random.randint(2, 14)      # опоздание
+                    elif roll < 0.85:
+                        shift = random.randint(-2, 2)      # в срок
+                    else:
+                        shift = random.randint(-8, -3)     # опережение
+                    a_end = s_end + timedelta(days=shift)
+                    a_end = max(a_end, date.fromisoformat(actual_start))
+                    actual_end = min(a_end, TODAY).isoformat()
                 sub_id = _ins(cur, 'substages', {
                     'stage_id': stage_id, 'name': sub_name, 'volume': vol, 'unit': unit,
                     'unit_price': price, 'total_price': vol * price,
+                    'plan_start_date': s_start.isoformat(),
                     'plan_end_date': s_end.isoformat(), 'status': ss,
-                    'created_by': team['pto']})
-                sub_rows.append((sub_id, sub_name, vol, unit, price, ss))
+                    'actual_start_date': actual_start, 'actual_end_date': actual_end,
+                    'completed_at': actual_end, 'created_by': team['pto']})
+                sub_rows.append((sub_id, sub_name, vol, unit, price, ss, actual_end))
                 stats['subs'] += 1
                 all_defect_targets.append((obj_id, stage_id, sub_id, team['inspector'], c_org, team['foreman'], c_uid))
 
             # ── Пакеты КС: approved-подэтапы → completed-пакет; closed → in_review ──
             appr = [s for s in sub_rows if s[5] == 'approved']
             if appr:
+                # пакет подан после факт-завершения работ, согласован ~неделю
+                last_fin = max((s[6] for s in appr if s[6]), default=None)
+                base_d = date.fromisoformat(last_fin) if last_fin else TODAY - timedelta(days=25)
+                submitted = min(base_d + timedelta(days=random.randint(1, 4)), TODAY)
+                completed = min(submitted + timedelta(days=random.randint(4, 10)), TODAY)
                 pkg_id = _ins(cur, 'doc_packages', {
                     'stage_id': stage_id, 'contractor_id': c_org, 'created_by': c_uid,
                     'status': 'completed',
-                    'submitted_at': (TODAY - timedelta(days=25)).isoformat(),
-                    'completed_at': (TODAY - timedelta(days=12)).isoformat()})
-                for sub_id, _, vol, _, price, _ in appr:
+                    'submitted_at': submitted.isoformat(),
+                    'completed_at': completed.isoformat()})
+                for sub_id, _, vol, _, price, _, _ in appr:
                     cur.execute('INSERT INTO package_items (package_id, substage_id, qty, unit_price, amount) '
                                 'VALUES (%s,%s,%s,%s,%s)', (pkg_id, sub_id, vol, price, vol * price))
                 for i, (role, _) in enumerate(config.APPROVAL_CHAIN, 1):
                     cur.execute('INSERT INTO approval_steps (package_id, step_order, role, status, approver_id, acted_at) '
                                 'VALUES (%s,%s,%s,%s,%s,%s)',
                                 (pkg_id, i, role, 'approved', team[role],
-                                 (TODAY - timedelta(days=24 - i * 2)).isoformat()))
+                                 min(submitted + timedelta(days=i), completed).isoformat()))
                 stats['pkgs'] += 1
             closed = [s for s in sub_rows if s[5] == 'closed']
             if closed:
@@ -322,7 +353,7 @@ def seed():
                     'stage_id': stage_id, 'contractor_id': c_org, 'created_by': c_uid,
                     'status': 'in_review',
                     'submitted_at': (TODAY - timedelta(days=random.randint(2, 9))).isoformat()})
-                for sub_id, _, vol, _, price, _ in closed:
+                for sub_id, _, vol, _, price, _, _ in closed:
                     part = random.choice([1.0, 1.0, 0.5])   # иногда процентовка
                     cur.execute('INSERT INTO package_items (package_id, substage_id, qty, unit_price, amount) '
                                 'VALUES (%s,%s,%s,%s,%s)',
@@ -335,6 +366,71 @@ def seed():
                 stats['pkgs'] += 1
 
             start = end + timedelta(days=random.randint(0, 7))
+
+        # ── Факт этапов из подэтапов ──
+        cur.execute('''
+            UPDATE construction_stages cs SET actual_start_date = sub.mn
+            FROM (SELECT stage_id, MIN(actual_start_date) mn FROM substages
+                  WHERE actual_start_date IS NOT NULL GROUP BY stage_id) sub
+            WHERE cs.id = sub.stage_id AND cs.object_id = %s''', (obj_id,))
+        cur.execute('''
+            UPDATE construction_stages cs SET actual_end_date = sub.mx
+            FROM (SELECT stage_id, MAX(actual_end_date) mx FROM substages
+                  WHERE actual_end_date IS NOT NULL GROUP BY stage_id) sub
+            WHERE cs.id = sub.stage_id AND cs.object_id = %s AND cs.status = 'done' ''', (obj_id,))
+
+        # ── Baseline: утверждаем исходный план, затем «жизнь» сдвигает
+        #    планы будущих этапов вправо (реалистичный сдвиг графика) ──
+        snapshot = {}
+        cur.execute('SELECT id, plan_start_date, plan_end_date FROM construction_stages WHERE object_id=%s', (obj_id,))
+        for r in cur.fetchall():
+            snapshot[f'stage:{r[0]}'] = {'plan_start': r[1], 'plan_end': r[2]}
+        cur.execute('''SELECT ss.id, ss.plan_start_date, ss.plan_end_date, ss.volume, ss.total_price
+                       FROM substages ss JOIN construction_stages cs ON ss.stage_id = cs.id
+                       WHERE cs.object_id=%s''', (obj_id,))
+        for r in cur.fetchall():
+            snapshot[f'sub:{r[0]}'] = {'plan_start': r[1], 'plan_end': r[2],
+                                       'volume': float(r[3]) if r[3] is not None else None,
+                                       'cost': float(r[4]) if r[4] is not None else None}
+        import json as _json
+        bl_date = (TODAY - timedelta(days=400 - di * 45))
+        cur.execute('INSERT INTO schedule_baselines (object_id, name, created_by, created_at, data_json) '
+                    'VALUES (%s,%s,%s,%s,%s)',
+                    (obj_id, f'Утверждён {bl_date.isoformat()}', team['manager'],
+                     bl_date.isoformat() + ' 10:00:00', _json.dumps(snapshot, ensure_ascii=False)))
+        # сдвиг планов 2 последних (будущих) этапов на 5–15 дней вправо
+        cur.execute("SELECT id FROM construction_stages WHERE object_id=%s AND status='planned' "
+                    "ORDER BY order_num DESC LIMIT 2", (obj_id,))
+        for (sid,) in cur.fetchall():
+            shift = random.randint(5, 15)
+            cur.execute("UPDATE construction_stages SET "
+                        "plan_start_date = (plan_start_date::date + %s)::text, "
+                        "plan_end_date = (plan_end_date::date + %s)::text WHERE id=%s",
+                        (shift, shift, sid))
+            cur.execute("UPDATE substages SET "
+                        "plan_start_date = (plan_start_date::date + %s)::text, "
+                        "plan_end_date = (plan_end_date::date + %s)::text "
+                        "WHERE stage_id=%s AND plan_end_date IS NOT NULL", (shift, shift, sid))
+
+        # ── Вехи объекта: из фактических/плановых дат этапов ──
+        cur.execute('SELECT name, plan_end_date, actual_end_date, status FROM construction_stages '
+                    'WHERE object_id=%s ORDER BY order_num', (obj_id,))
+        st_rows = cur.fetchall()
+        milestone_map = [(0, 'Котлован завершён'), (2, 'Каркас закрыт'),
+                         (4, 'Кровля закрыта'), (8, 'Ввод в эксплуатацию')]
+        for idx, m_name in milestone_map:
+            if idx >= len(st_rows):
+                continue
+            _, p_end, a_end, st_status = st_rows[idx]
+            plan_d = p_end
+            if m_name == 'Ввод в эксплуатацию' and p_end:
+                plan_d = (date.fromisoformat(p_end) + timedelta(days=45)).isoformat()
+            if st_status == 'done' and a_end:
+                cur.execute('INSERT INTO schedule_milestones (object_id, name, plan_date, actual_date, status, order_num) '
+                            "VALUES (%s,%s,%s,%s,'done',%s)", (obj_id, m_name, plan_d, a_end, idx))
+            else:
+                cur.execute('INSERT INTO schedule_milestones (object_id, name, plan_date, status, order_num) '
+                            "VALUES (%s,%s,%s,'pending',%s)", (obj_id, m_name, plan_d, idx))
 
     # ── Замечания: 160 на все объекты ──
     N_DEFECTS = 160
