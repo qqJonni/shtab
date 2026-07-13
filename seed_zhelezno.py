@@ -26,10 +26,31 @@ import config
 
 random.seed(2026)
 
-OBJECT_ID = 8
-DEVELOPER_ID = 12            # ООО «Железно Пермь»
-KEEP_STAGE_ID = 20          # чистовая отделка квартир (ИП Львов) — не трогать
-KEEP_STAGE_ORDER = 9        # её место в порядке (перед благоустройством)
+# ID определяются динамически (resolve) — скрипт работает и локально, и на проде,
+# где идентификаторы отличаются. Целевой объект — дом №3 застройщика «Железно».
+KEEP_STAGE_ORDER = 9        # место этапа отделки ИП Львов (перед благоустройством)
+
+
+def _resolve(cur):
+    """Находит dev_id (Железно), obj_id (дом №3), keep_stage_id (этап ИП Львов)."""
+    cur.execute("SELECT id FROM organizations WHERE name LIKE '%Железно%' AND type='developer' ORDER BY id LIMIT 1")
+    r = cur.fetchone()
+    if not r:
+        raise SystemExit('Застройщик «Железно» не найден.')
+    dev_id = r['id']
+    cur.execute("SELECT id, name FROM objects WHERE developer_id=%s AND name LIKE '%%№3%%' ORDER BY id LIMIT 1", (dev_id,))
+    r = cur.fetchone()
+    if not r:
+        raise SystemExit('Объект «дом №3» застройщика Железно не найден.')
+    obj_id, obj_name = r['id'], r['name']
+    cur.execute("SELECT id FROM organizations WHERE name LIKE '%Львов%' AND type='contractor' ORDER BY id LIMIT 1")
+    r = cur.fetchone()
+    lvov_id = r['id'] if r else None
+    cur.execute("SELECT id FROM construction_stages WHERE object_id=%s AND contractor_id=%s ORDER BY id LIMIT 1",
+                (obj_id, lvov_id))
+    r = cur.fetchone()
+    keep_stage_id = r['id'] if r else None
+    return dev_id, obj_id, obj_name, keep_stage_id
 
 # ── Профильные подрядчики (реалистичные пермские названия) ──
 CONTRACTORS = {
@@ -137,12 +158,13 @@ def _gen_code(cur, base):
 
 
 def wipe(cur):
+    dev_id, obj_id, obj_name, keep_stage_id = _resolve(cur)
     names = [c[0] for c in CONTRACTORS.values()]
     stage_names = [s[1] for s in STAGES]
-    # этапы объекта 8, созданные нами (по именам), кроме этапа Львова
+    # этапы объекта, созданные нами (по именам), кроме этапа Львова
     cur.execute("SELECT id FROM construction_stages WHERE object_id=%s AND name = ANY(%s) AND id != %s",
-                (OBJECT_ID, stage_names, KEEP_STAGE_ID))
-    stage_ids = [r[0] for r in cur.fetchall()]
+                (obj_id, stage_names, keep_stage_id or -1))
+    stage_ids = [r['id'] for r in cur.fetchall()]
     for sid in stage_ids:
         cur.execute("DELETE FROM approval_steps WHERE package_id IN (SELECT id FROM doc_packages WHERE stage_id=%s)", (sid,))
         cur.execute("DELETE FROM package_items WHERE package_id IN (SELECT id FROM doc_packages WHERE stage_id=%s)", (sid,))
@@ -156,29 +178,33 @@ def wipe(cur):
         row = cur.fetchone()
         if not row:
             continue
-        oid = row[0]
-        cur.execute("SELECT COUNT(*) FROM construction_stages WHERE contractor_id=%s", (oid,))
-        if cur.fetchone()[0] == 0:
+        oid = row['id']
+        cur.execute("SELECT COUNT(*) c FROM construction_stages WHERE contractor_id=%s", (oid,))
+        if cur.fetchone()['c'] == 0:
             cur.execute("DELETE FROM tenant_settings WHERE organization_id=%s", (oid,))
             cur.execute("DELETE FROM organizations WHERE id=%s", (oid,))
-    print(f'Удалено этапов: {len(stage_ids)}, подрядчики очищены. Этап Львова (id={KEEP_STAGE_ID}) не тронут.')
+    print(f'Удалено этапов: {len(stage_ids)}, подрядчики очищены. '
+          f'Этап Львова (id={keep_stage_id}) на объекте «{obj_name}» не тронут.')
 
 
 def seed():
     conn = _conn()
     cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    dev_id, obj_id, obj_name, keep_stage_id = _resolve(cur)
 
     # защита от повторного запуска
     cur.execute("SELECT COUNT(*) c FROM construction_stages WHERE object_id=%s AND name = ANY(%s)",
-                (OBJECT_ID, [s[1] for s in STAGES]))
+                (obj_id, [s[1] for s in STAGES]))
     if cur.fetchone()['c'] > 0:
         print('Данные уже созданы. Сначала: python3 seed_zhelezno.py --wipe')
         return
 
     # команда объекта — для approver_id пакетов
-    cur.execute("SELECT role, user_id FROM object_team WHERE object_id=%s", (OBJECT_ID,))
+    cur.execute("SELECT role, user_id FROM object_team WHERE object_id=%s", (obj_id,))
     team = {r['role']: r['user_id'] for r in cur.fetchall()}
     manager_id = team.get('manager')
+    if not team:
+        print(f'ВНИМАНИЕ: у объекта «{obj_name}» (id={obj_id}) нет команды — пакеты будут без approver_id.')
 
     # ── подрядчики ──
     contr_ids = {}
@@ -192,11 +218,11 @@ def seed():
         cur.execute(
             "INSERT INTO organizations (name, type, inn, kpp, join_code, status, created_by_org) "
             "VALUES (%s,'contractor',%s,%s,%s,'active',%s) RETURNING id",
-            (name, inn, kpp, code, DEVELOPER_ID))
+            (name, inn, kpp, code, dev_id))
         contr_ids[key] = cur.fetchone()['id']
 
     # существующий этап Львова → его место в порядке
-    cur.execute("UPDATE construction_stages SET order_num=%s WHERE id=%s", (KEEP_STAGE_ORDER, KEEP_STAGE_ID))
+    cur.execute("UPDATE construction_stages SET order_num=%s WHERE id=%s", (KEEP_STAGE_ORDER, keep_stage_id))
 
     # ── графики этапов (реалистичные сроки стройки 2023–2026) ──
     schedule = {
@@ -232,7 +258,7 @@ def seed():
             " plan_start_date, plan_end_date, actual_start_date, actual_end_date, "
             " status, created_by, contract_amount) "
             "VALUES (%s,%s,%s,%s,'assigned',%s,%s,%s,%s,%s,%s,%s) RETURNING id",
-            (OBJECT_ID, sname, order, c_org, p_start, p_end, a_start, a_end,
+            (obj_id, sname, order, c_org, p_start, p_end, a_start, a_end,
              st_status, manager_id, total))
         stage_id = cur.fetchone()['id']
         stats['stages'] += 1
@@ -310,7 +336,7 @@ def seed():
 if __name__ == '__main__':
     if '--wipe' in sys.argv:
         conn = _conn()
-        cur = conn.cursor()
+        cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
         wipe(cur)
         conn.commit()
         conn.close()
