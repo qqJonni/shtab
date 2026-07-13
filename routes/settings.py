@@ -89,6 +89,51 @@ def register(app):
         flash(f'Цепочка согласования {label} сохранена. Применится к новым пакетам.', 'success')
         return redirect(url_for('settings_page', area='organization'))
 
+    @app.route('/settings/organization/requisites', methods=['POST'])
+    @login_required
+    @role_required('manager', 'admin')
+    def settings_requisites_save():
+        org_id = _assert_org_settings(current_user)
+        from db import execute_db
+        from helpers import save_org_logo
+        fields = ('name', 'inn', 'kpp', 'ogrn', 'okpo', 'address', 'phone', 'email',
+                  'rep_position', 'rep_name')
+        vals = {f: request.form.get(f, '').strip() for f in fields}
+        if not vals['name']:
+            flash('Название организации обязательно.', 'danger')
+            return redirect(url_for('settings_page', area='organization'))
+        execute_db(
+            'UPDATE organizations SET name=?, inn=?, kpp=?, ogrn=?, okpo=?, address=?, '
+            'phone=?, email=?, rep_position=?, rep_name=? WHERE id=?',
+            (*[vals[f] for f in fields], org_id))
+
+        logo_file = request.files.get('logo')
+        if logo_file and logo_file.filename:
+            fname = save_org_logo(logo_file, org_id)
+            if fname:
+                execute_db('UPDATE organizations SET logo=? WHERE id=?', (fname, org_id))
+            else:
+                flash('Логотип: недопустимый формат (нужен PNG/JPG/WEBP).', 'warning')
+        flash('Реквизиты организации сохранены.', 'success')
+        return redirect(url_for('settings_page', area='organization'))
+
+    @app.route('/settings/organization/logo/delete', methods=['POST'])
+    @login_required
+    @role_required('manager', 'admin')
+    def settings_logo_delete():
+        org_id = _assert_org_settings(current_user)
+        import os
+        from db import execute_db
+        row = query_db('SELECT logo FROM organizations WHERE id = ?', (org_id,), one=True)
+        if row and row['logo']:
+            import config as _c
+            fp = os.path.join(_c.LOGOS_FOLDER, str(org_id), row['logo'])
+            if os.path.exists(fp):
+                os.remove(fp)
+        execute_db('UPDATE organizations SET logo=NULL WHERE id=?', (org_id,))
+        flash('Логотип удалён.', 'info')
+        return redirect(url_for('settings_page', area='organization'))
+
     @app.route('/settings/organization/access', methods=['POST'])
     @login_required
     @role_required('manager', 'admin')

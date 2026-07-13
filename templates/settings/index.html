@@ -133,10 +133,64 @@
         {% endfor %}
       </div></div>
     </div>
-    <div class="col-md-6">
-      <div class="card h-100"><div class="card-body p-4">
-        <h6 class="fw-bold mb-2"><i class="bi bi-card-heading me-1"></i>Реквизиты и логотип</h6>
-        <p class="text-muted mb-0" style="font-size:13px">ИНН, КПП, адрес, представитель, логотип для документов — на следующих шагах.</p>
+    <div class="col-12">
+      <div class="card"><div class="card-body p-4">
+        <h6 class="fw-bold mb-3"><i class="bi bi-card-heading me-1"></i>Реквизиты и логотип</h6>
+        <form method="post" action="{{ url_for('settings_requisites_save') }}" enctype="multipart/form-data">
+          <div class="row g-3">
+            {# Логотип #}
+            <div class="col-md-3 text-center">
+              <div class="mb-2">
+                {% if org.logo %}
+                  <img src="{{ url_for('static', filename='logos/' + org.id|string + '/' + org.logo) }}"
+                       alt="Логотип" style="max-width:120px;max-height:120px;border-radius:8px;border:1px solid #E2E8F0;padding:4px">
+                {% else %}
+                  <div class="d-flex align-items-center justify-content-center mx-auto"
+                       style="width:120px;height:120px;border-radius:8px;border:1px dashed #CBD5E1;color:#94A3B8">
+                    <i class="bi bi-building" style="font-size:36px"></i>
+                  </div>
+                {% endif %}
+              </div>
+              <input type="file" name="logo" accept="image/png,image/jpeg,image/webp" class="form-control form-control-sm mb-1">
+              <div class="form-text" style="font-size:11px">PNG/JPG/WEBP</div>
+              {% if org.logo %}
+                <button type="submit" formaction="{{ url_for('settings_logo_delete') }}" formnovalidate
+                        class="btn btn-sm btn-link text-danger p-0" style="font-size:12px"
+                        onclick="return confirm('Удалить логотип?')">Удалить логотип</button>
+              {% endif %}
+            </div>
+            {# Реквизиты #}
+            <div class="col-md-9">
+              <div class="row g-2">
+                <div class="col-12">
+                  <label class="form-label mb-1" style="font-size:13px">Название <span class="text-danger">*</span></label>
+                  <input type="text" name="name" class="form-control form-control-sm" value="{{ org.name or '' }}" required>
+                </div>
+                <div class="col-sm-6"><label class="form-label mb-1" style="font-size:13px">ИНН</label>
+                  <input type="text" name="inn" class="form-control form-control-sm" value="{{ org.inn or '' }}"></div>
+                <div class="col-sm-6"><label class="form-label mb-1" style="font-size:13px">КПП</label>
+                  <input type="text" name="kpp" class="form-control form-control-sm" value="{{ org.kpp or '' }}"></div>
+                <div class="col-sm-6"><label class="form-label mb-1" style="font-size:13px">ОГРН</label>
+                  <input type="text" name="ogrn" class="form-control form-control-sm" value="{{ org.ogrn or '' }}"></div>
+                <div class="col-sm-6"><label class="form-label mb-1" style="font-size:13px">ОКПО</label>
+                  <input type="text" name="okpo" class="form-control form-control-sm" value="{{ org.okpo or '' }}"></div>
+                <div class="col-12"><label class="form-label mb-1" style="font-size:13px">Адрес</label>
+                  <input type="text" name="address" class="form-control form-control-sm" value="{{ org.address or '' }}"></div>
+                <div class="col-sm-6"><label class="form-label mb-1" style="font-size:13px">Телефон</label>
+                  <input type="text" name="phone" class="form-control form-control-sm" value="{{ org.phone or '' }}"></div>
+                <div class="col-sm-6"><label class="form-label mb-1" style="font-size:13px">E-mail</label>
+                  <input type="email" name="email" class="form-control form-control-sm" value="{{ org.email or '' }}"></div>
+                <div class="col-sm-6"><label class="form-label mb-1" style="font-size:13px">Должность представителя</label>
+                  <input type="text" name="rep_position" class="form-control form-control-sm" value="{{ org.rep_position or '' }}"></div>
+                <div class="col-sm-6"><label class="form-label mb-1" style="font-size:13px">ФИО представителя</label>
+                  <input type="text" name="rep_name" class="form-control form-control-sm" value="{{ org.rep_name or '' }}"></div>
+              </div>
+            </div>
+          </div>
+          <div class="mt-3">
+            <button type="submit" class="btn btn-sm btn-primary">Сохранить реквизиты</button>
+          </div>
+        </form>
       </div></div>
     </div>
     <div class="col-md-6">

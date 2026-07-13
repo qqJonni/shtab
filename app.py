@@ -90,10 +90,22 @@ def create_app():
         if not current_user.is_authenticated:
             return {}
         from helpers import can_see_finance, can_access
+        # логотип тенанта (developer-роли): показывается в шапке/сайдбаре
+        brand_logo = None
+        brand_name = None
+        if current_user.role not in ('admin', 'contractor') and current_user.organization_id:
+            org = query_db('SELECT logo, name FROM organizations WHERE id = ?',
+                           (current_user.organization_id,), one=True)
+            if org:
+                brand_name = org['name']
+                if org['logo']:
+                    brand_logo = f"logos/{current_user.organization_id}/{org['logo']}"
         return {
             'can_see_finance': can_see_finance(current_user),
             'can_access_gpr': can_access(current_user, 'gpr'),
             'can_access_digest': can_access(current_user, 'digest'),
+            'brand_logo': brand_logo,
+            'brand_name': brand_name,
         }
 
     @app.context_processor
@@ -849,6 +861,8 @@ def run_migrations(conn):
     # Онбординг подрядчиков: какой тенант завёл организацию
     if not _col_exists('organizations', 'created_by_org'):
         cur.execute('ALTER TABLE organizations ADD COLUMN created_by_org INTEGER REFERENCES organizations(id)')
+    if not _col_exists('organizations', 'logo'):
+        cur.execute('ALTER TABLE organizations ADD COLUMN logo TEXT')
 
     # Мультитенантность: тенант объекта
     if not _col_exists('objects', 'developer_id'):

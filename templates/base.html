@@ -103,7 +103,9 @@
   <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#mobileMenu" aria-expanded="false">
     <i class="bi bi-list"></i>
   </button>
-  <a class="crm-mobile-brand" href="{{ url_for('dashboard') }}">ШТАБ</a>
+  <a class="crm-mobile-brand" href="{{ url_for('dashboard') }}">
+    {% if brand_logo %}<img src="{{ url_for('static', filename=brand_logo) }}" alt="{{ brand_name }}" style="max-height:28px;max-width:120px;vertical-align:middle">{% else %}ШТАБ{% endif %}
+  </a>
   <div class="d-flex align-items-center gap-2">
     <a href="{{ url_for('notifications_list') }}" class="position-relative" style="color:#94A3B8;font-size:18px;text-decoration:none">
       <i class="bi bi-bell"></i>
@@ -145,7 +147,12 @@
   <aside class="crm-sidebar d-none d-md-flex">
     <div class="crm-sidebar-logo">
       <a href="{{ url_for('dashboard') }}">
-        <span class="logo-icon"><i class="bi bi-building"></i></span> ШТАБ
+        {% if brand_logo %}
+          <img src="{{ url_for('static', filename=brand_logo) }}" alt="{{ brand_name }}"
+               style="max-height:36px;max-width:160px;vertical-align:middle">
+        {% else %}
+          <span class="logo-icon"><i class="bi bi-building"></i></span> ШТАБ
+        {% endif %}
       </a>
     </div>
 

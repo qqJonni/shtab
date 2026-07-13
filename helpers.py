@@ -312,6 +312,11 @@ def save_plan_file(file, object_id):
     return _save_file(file, folder, ALLOWED_IMG)
 
 
+def save_org_logo(file, org_id):
+    folder = os.path.join(config.LOGOS_FOLDER, str(org_id))
+    return _save_file(file, folder, ALLOWED_IMG)
+
+
 def save_defect_photo(file, defect_id):
     folder = os.path.join(config.DEFECTS_FOLDER, str(defect_id))
     return _save_file(file, folder, ALLOWED_IMG | ALLOWED_VIDEO)
