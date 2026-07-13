@@ -85,6 +85,18 @@ def create_app():
         return {'now_date': date.today().isoformat()}
 
     @app.context_processor
+    def inject_access_helpers():
+        from flask_login import current_user
+        if not current_user.is_authenticated:
+            return {}
+        from helpers import can_see_finance, can_access
+        return {
+            'can_see_finance': can_see_finance(current_user),
+            'can_access_gpr': can_access(current_user, 'gpr'),
+            'can_access_digest': can_access(current_user, 'digest'),
+        }
+
+    @app.context_processor
     def inject_static_version():
         # cache-busting для crm.css: версия = mtime файла
         css_path = os.path.join(app.static_folder, 'css', 'crm.css')

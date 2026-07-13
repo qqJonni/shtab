@@ -102,10 +102,35 @@
   </div></div>
 
   <div class="row g-3">
-    <div class="col-md-6">
-      <div class="card h-100"><div class="card-body p-4">
-        <h6 class="fw-bold mb-2"><i class="bi bi-toggles me-1"></i>Доступы и модули</h6>
-        <p class="text-muted mb-0" style="font-size:13px">Видимость модулей и финансовых данных по ролям — на следующих шагах.</p>
+    <div class="col-12">
+      <div class="card"><div class="card-body p-4">
+        <h6 class="fw-bold mb-1"><i class="bi bi-toggles me-1"></i>Доступы и модули</h6>
+        <p class="text-muted mb-3" style="font-size:13px">Какие роли видят модуль. Снимите или добавьте роль — доступ меняется только внутри вашей организации. <strong>Руководитель и Администратор</strong> видят финансы и дайджест всегда.</p>
+        {% for module, mlabel in module_labels.items() %}
+        <div class="mb-3 pb-3 {% if not loop.last %}border-bottom{% endif %}">
+          <div class="d-flex justify-content-between align-items-center mb-2">
+            <div class="fw-semibold" style="font-size:14px">{{ mlabel }}</div>
+            <form method="post" action="{{ url_for('settings_access_reset') }}" class="d-inline">
+              <input type="hidden" name="module" value="{{ module }}">
+              <button class="btn btn-sm btn-link text-muted p-0" style="font-size:12px">Сбросить</button>
+            </form>
+          </div>
+          <form method="post" action="{{ url_for('settings_access_save') }}" class="d-flex flex-wrap align-items-center gap-3">
+            <input type="hidden" name="module" value="{{ module }}">
+            {% for role, rlabel in access_assignable.items() %}
+              {% set locked = (module in ('finance', 'digest') and role == 'manager') %}
+              <label class="d-flex align-items-center gap-1" style="font-size:13px;{% if locked %}opacity:.6{% endif %}">
+                <input type="checkbox" name="roles" value="{{ role }}"
+                       {% if role in access[module] %}checked{% endif %}
+                       {% if locked %}disabled{% endif %}>
+                {{ rlabel }}
+              </label>
+              {% if locked %}<input type="hidden" name="roles" value="manager">{% endif %}
+            {% endfor %}
+            <button type="submit" class="btn btn-sm btn-primary">Сохранить</button>
+          </form>
+        </div>
+        {% endfor %}
       </div></div>
     </div>
     <div class="col-md-6">

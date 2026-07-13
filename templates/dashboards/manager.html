@@ -94,7 +94,7 @@
           <th>Объект</th>
           <th>Этапов</th>
           <th style="min-width:120px">Прогресс</th>
-          <th class="text-end">Сумма (₽)</th>
+          {% if can_see_finance %}<th class="text-end">Сумма (₽)</th>{% endif %}
           <th>Замечания</th>
           <th>Пакеты</th>
           <th style="width:60px"></th>
@@ -113,7 +113,7 @@
               </div>
             {% else %}<span class="text-muted" style="font-size:12px">—</span>{% endif %}
           </td>
-          <td class="text-end" style="font-size:13px">{{ '{:,.0f}'.format(o.completed_sum).replace(',', ' ') }}</td>
+          {% if can_see_finance %}<td class="text-end" style="font-size:13px">{{ '{:,.0f}'.format(o.completed_sum).replace(',', ' ') }}</td>{% endif %}
           <td>
             {% if o.defects_open > 0 %}<span class="badge badge-overdue">{{ o.defects_open }}</span>
             {% else %}<span class="text-muted">0</span>{% endif %}
@@ -123,7 +123,7 @@
             {% else %}<span class="text-muted">0</span>{% endif %}
           </td>
           <td class="text-end">
-            <a href="{{ url_for('object_schedule', obj_id=o.id) }}" class="btn btn-sm btn-outline-secondary py-0 px-2" title="График производства работ"><i class="bi bi-bar-chart-steps"></i></a>
+            {% if can_access_gpr %}<a href="{{ url_for('object_schedule', obj_id=o.id) }}" class="btn btn-sm btn-outline-secondary py-0 px-2" title="График производства работ"><i class="bi bi-bar-chart-steps"></i></a>{% endif %}
           </td>
         </tr>
         {% endfor %}

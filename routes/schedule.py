@@ -6,7 +6,7 @@ from flask import render_template, redirect, url_for, request, flash, abort
 from flask_login import login_required, current_user
 
 from db import query_db, execute_db
-from helpers import assert_object_access, role_required
+from helpers import assert_object_access, role_required, can_access_for_object
 
 RISK_AHEAD_DAYS = 7   # «под риском»: плановый финиш ближе N дней, работа не завершена
 
@@ -302,6 +302,8 @@ def register(app):
         if not obj:
             abort(404)
         assert_object_access(current_user, obj_id)
+        if not can_access_for_object(current_user, 'gpr', obj_id):
+            abort(403)
 
         contractor_org = current_user.organization_id if current_user.role == 'contractor' else None
         data = get_schedule_data(obj_id, contractor_org_id=contractor_org)

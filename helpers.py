@@ -103,6 +103,65 @@ def _parse_chain(raw, default_key):
     return [(r, CHAIN_ROLES[r]) for r in roles]
 
 
+# Переключатели видимости модулей: наборы разрешённых ролей по тенанту.
+# Дефолт = текущее поведение. Значения в tenant_settings — JSON-список ролей.
+MODULE_ACCESS = {
+    # module: (settings_key, default_roles)
+    'gpr':     ('access_gpr',     ['manager', 'pto', 'inspector', 'foreman', 'accountant', 'supply', 'admin']),
+    'finance': ('access_finance', ['manager', 'pto', 'accountant', 'admin']),
+    'digest':  ('access_digest',  ['manager', 'pto', 'admin']),
+}
+
+
+def _access_roles(tenant_org_id, module):
+    key, default = MODULE_ACCESS[module]
+    raw = get_tenant_setting(tenant_org_id, key)
+    if raw:
+        try:
+            roles = _json.loads(raw)
+            if isinstance(roles, list):
+                return set(roles)
+        except (ValueError, TypeError):
+            pass
+    return set(default)
+
+
+def _tenant_of(user):
+    """Тенант-организация пользователя (для developer-ролей). admin/contractor → None."""
+    if user.role in ('admin', 'contractor') or not user.organization_id:
+        return None
+    return user.organization_id
+
+
+def can_access(user, module):
+    """Разрешён ли пользователю модуль по настройке его тенанта.
+    admin — всегда да. НЕ заменяет assert_object_access: тенант-скоуп поверх."""
+    if user.role == 'admin':
+        return True
+    return user.role in _access_roles(_tenant_of(user), module)
+
+
+def can_access_for_object(user, module, object_id):
+    """Доступ к модулю в контексте конкретного объекта: настройка берётся
+    от ТЕНАНТА ОБЪЕКТА (developer_id), роль пользователя проверяется по ней.
+    Используется, когда пользователь может быть вне тенанта объекта
+    (contractor) — но тенант-скоуп (assert_object_access) всё равно обязателен."""
+    if user.role == 'admin':
+        return True
+    from db import query_db
+    row = query_db('SELECT developer_id FROM objects WHERE id = ?', (object_id,), one=True)
+    dev_id = row['developer_id'] if row else None
+    return user.role in _access_roles(dev_id, module)
+
+
+def can_see_finance(user):
+    """Видит ли пользователь финансовые данные (расценки, суммы, деньги).
+    Contractor всегда видит свои деньги (это его договорные суммы)."""
+    if user.role in ('admin', 'contractor'):
+        return True
+    return user.role in _access_roles(_tenant_of(user), 'finance')
+
+
 def get_chain_for_object(object_id, kind='ks'):
     """Цепочка согласования для объекта: настройка ТЕНАНТА ОБЪЕКТА
     (organizations застройщика через objects.developer_id) или дефолт.

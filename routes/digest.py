@@ -6,7 +6,7 @@ from flask import abort, render_template, request, send_file
 from flask_login import current_user, login_required
 
 from db import query_db, notify
-from helpers import role_required, assert_object_access
+from helpers import role_required, assert_object_access, can_access_for_object
 
 DIGEST_ROLES = ('manager', 'admin', 'pto')
 
@@ -347,12 +347,13 @@ def register(app):
 
     @app.route('/objects/<int:obj_id>/digest')
     @login_required
-    @role_required(*DIGEST_ROLES)
     def object_digest_view(obj_id):
         obj = query_db('SELECT * FROM objects WHERE id = ?', (obj_id,), one=True)
         if not obj:
             abort(404)
         assert_object_access(current_user, obj_id)
+        if not can_access_for_object(current_user, 'digest', obj_id):
+            abort(403)
 
         period = request.args.get('period', 'week')
         try:
@@ -376,11 +377,13 @@ def register(app):
 
     @app.route('/objects/<int:obj_id>/digest/pdf')
     @login_required
-    @role_required(*DIGEST_ROLES)
     def object_digest_pdf(obj_id):
         obj = query_db('SELECT * FROM objects WHERE id = ?', (obj_id,), one=True)
         if not obj:
             abort(404)
+        assert_object_access(current_user, obj_id)
+        if not can_access_for_object(current_user, 'digest', obj_id):
+            abort(403)
 
         period = request.args.get('period', 'week')
         try:
