@@ -58,13 +58,50 @@
   <div class="text-muted mb-3" style="font-size:13px">
     Настройки организации <strong>{{ org.name }}</strong> — действуют для всех её объектов и сотрудников.
   </div>
-  <div class="row g-3">
-    <div class="col-md-6">
-      <div class="card h-100"><div class="card-body p-4">
-        <h6 class="fw-bold mb-2"><i class="bi bi-diagram-3 me-1"></i>Цепочки согласования</h6>
-        <p class="text-muted mb-0" style="font-size:13px">Маршруты КС и ИД: состав и порядок ролей. Конструктор появится на следующих шагах.</p>
-      </div></div>
+  {# ═══ Цепочки согласования ═══ #}
+  <div class="card mb-3"><div class="card-body p-4">
+    <h6 class="fw-bold mb-1"><i class="bi bi-diagram-3 me-1"></i>Цепочки согласования</h6>
+    <p class="text-muted mb-3" style="font-size:13px">Порядок ролей, через которые проходят пакеты. Изменения применяются к <strong>новым</strong> пакетам; уже отправленные идут по своей цепочке.</p>
+    {% for kind, klabel in [('ks', 'Пакеты КС (закрытие работ)'), ('id', 'Пакеты ИД (исполнительная документация)')] %}
+    <div class="mb-4">
+      <div class="d-flex justify-content-between align-items-center mb-2">
+        <div class="fw-semibold" style="font-size:14px">{{ klabel }}</div>
+        <form method="post" action="{{ url_for('settings_chains_reset') }}" class="d-inline"
+              onsubmit="return confirm('Сбросить цепочку {{ 'КС' if kind == 'ks' else 'ИД' }} к стандартной?')">
+          <input type="hidden" name="kind" value="{{ kind }}">
+          <button class="btn btn-sm btn-link text-muted p-0" style="font-size:12px">Сбросить к стандартной</button>
+        </form>
+      </div>
+      <form method="post" action="{{ url_for('settings_chains_save') }}" class="chain-editor" data-kind="{{ kind }}">
+        <input type="hidden" name="kind" value="{{ kind }}">
+        <div class="chain-list d-flex flex-wrap align-items-center gap-2 mb-2" id="chain-{{ kind }}">
+          {% for role, label in chains[kind] %}
+          <div class="chain-item d-flex align-items-center gap-1 px-2 py-1 rounded-3" data-role="{{ role }}"
+               style="background:#EFF6FF;border:1px solid #BFDBFE;font-size:13px">
+            <span class="chain-order text-muted" style="font-size:11px">{{ loop.index }}</span>
+            <span>{{ label }}</span>
+            <input type="hidden" name="roles" value="{{ role }}">
+            <button type="button" class="btn-chain-up btn btn-sm p-0 px-1" title="Раньше" style="line-height:1">↑</button>
+            <button type="button" class="btn-chain-down btn btn-sm p-0 px-1" title="Позже" style="line-height:1">↓</button>
+            <button type="button" class="btn-chain-del btn btn-sm p-0 px-1 text-danger" title="Убрать" style="line-height:1">✕</button>
+          </div>
+          {% endfor %}
+        </div>
+        <div class="d-flex gap-2 align-items-center flex-wrap">
+          <select class="form-select form-select-sm chain-add-select" style="max-width:200px;font-size:13px">
+            <option value="">+ добавить роль…</option>
+            {% for r, lbl in chain_roles.items() %}
+              <option value="{{ r }}" data-label="{{ lbl }}">{{ lbl }}</option>
+            {% endfor %}
+          </select>
+          <button type="submit" class="btn btn-sm btn-primary">Сохранить</button>
+        </div>
+      </form>
     </div>
+    {% endfor %}
+  </div></div>
+
+  <div class="row g-3">
     <div class="col-md-6">
       <div class="card h-100"><div class="card-body p-4">
         <h6 class="fw-bold mb-2"><i class="bi bi-toggles me-1"></i>Доступы и модули</h6>
@@ -85,6 +122,66 @@
     </div>
   </div>
   {% endif %}
+
+<script>
+(function () {
+  function renumber(list) {
+    list.querySelectorAll('.chain-item').forEach((it, i) => {
+      it.querySelector('.chain-order').textContent = i + 1;
+    });
+  }
+  document.querySelectorAll('.chain-editor').forEach(form => {
+    const list = form.querySelector('.chain-list');
+    const sel = form.querySelector('.chain-add-select');
+
+    list.addEventListener('click', e => {
+      const item = e.target.closest('.chain-item');
+      if (!item) return;
+      if (e.target.classList.contains('btn-chain-del')) {
+        item.remove(); refreshSelect();
+      } else if (e.target.classList.contains('btn-chain-up') && item.previousElementSibling) {
+        item.parentNode.insertBefore(item, item.previousElementSibling);
+        renumber(list);
+      } else if (e.target.classList.contains('btn-chain-down') && item.nextElementSibling) {
+        item.parentNode.insertBefore(item.nextElementSibling, item);
+        renumber(list);
+      }
+    });
+
+    sel.addEventListener('change', () => {
+      const role = sel.value;
+      if (!role) return;
+      const label = sel.options[sel.selectedIndex].dataset.label;
+      const div = document.createElement('div');
+      div.className = 'chain-item d-flex align-items-center gap-1 px-2 py-1 rounded-3';
+      div.dataset.role = role;
+      div.style.cssText = 'background:#EFF6FF;border:1px solid #BFDBFE;font-size:13px';
+      div.innerHTML = `<span class="chain-order text-muted" style="font-size:11px"></span>
+        <span>${label}</span>
+        <input type="hidden" name="roles" value="${role}">
+        <button type="button" class="btn-chain-up btn btn-sm p-0 px-1" style="line-height:1">↑</button>
+        <button type="button" class="btn-chain-down btn btn-sm p-0 px-1" style="line-height:1">↓</button>
+        <button type="button" class="btn-chain-del btn btn-sm p-0 px-1 text-danger" style="line-height:1">✕</button>`;
+      list.appendChild(div);
+      renumber(list); refreshSelect();
+      sel.value = '';
+    });
+
+    function refreshSelect() {
+      const used = new Set([...list.querySelectorAll('.chain-item')].map(i => i.dataset.role));
+      [...sel.options].forEach(o => { if (o.value) o.hidden = used.has(o.value); });
+    }
+    refreshSelect();
+
+    form.addEventListener('submit', e => {
+      if (list.querySelectorAll('.chain-item').length === 0) {
+        e.preventDefault();
+        alert('Цепочка не может быть пустой.');
+      }
+    });
+  });
+})();
+</script>
 
 {% elif area == 'platform' %}
   {# ═══ Платформа (admin) ═══ #}

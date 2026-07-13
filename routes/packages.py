@@ -5,7 +5,8 @@ from flask_login import login_required, current_user
 
 import config
 from db import query_db, execute_db, get_db, notify
-from helpers import role_required, assert_object_access, get_object_team, save_package_document
+from helpers import role_required, assert_object_access, get_object_team, \
+    get_chain_for_object, CHAIN_ROLES, save_package_document
 
 DOC_TYPE_LABELS = {
     'ks2': 'КС-2',
@@ -203,7 +204,7 @@ def register(app):
             'WHERE a.package_id = ? ORDER BY a.step_order', (package_id,))
 
         my_step = None
-        if current_user.role in dict(config.APPROVAL_CHAIN) and pkg['status'] == 'in_review':
+        if current_user.role in CHAIN_ROLES and pkg['status'] == 'in_review':
             my_step = query_db(
                 "SELECT * FROM approval_steps WHERE package_id = ? AND role = ? AND status = 'pending'",
                 (package_id, current_user.role), one=True)
@@ -213,7 +214,7 @@ def register(app):
                                doc_type_labels=DOC_TYPE_LABELS,
                                status_labels=PACKAGE_STATUS_LABELS,
                                is_contractor=_is_package_contractor(pkg),
-                               approval_chain=config.APPROVAL_CHAIN,
+                               approval_chain=get_chain_for_object(pkg['object_id'], 'ks'),
                                my_step=my_step)
 
     @app.route('/packages/<int:package_id>/upload', methods=['POST'])
@@ -481,8 +482,9 @@ def register(app):
 
         # Проверяем команду объекта — все роли цепочки должны быть назначены
         team = get_object_team(full['object_id'])
-        chain_roles = [role for role, _ in config.APPROVAL_CHAIN]
-        missing = [dict(config.APPROVAL_CHAIN).get(r, r) for r in chain_roles if r not in team]
+        chain = get_chain_for_object(full['object_id'], 'ks')
+        chain_roles = [role for role, _ in chain]
+        missing = [dict(chain).get(r, r) for r in chain_roles if r not in team]
         if missing:
             flash(f'Нельзя отправить: в команде объекта не назначены — {", ".join(missing)}. '
                   'Руководитель должен назначить команду на странице объекта.', 'danger')
@@ -521,7 +523,7 @@ def register(app):
             if covers_all:
                 db.execute("UPDATE substages SET status = 'closed' WHERE id = ?", (it['substage_id'],))
 
-        for i, (role, _) in enumerate(config.APPROVAL_CHAIN, 1):
+        for i, (role, _) in enumerate(chain, 1):
             status = 'pending' if i == 1 else 'waiting'
             approver_id = team.get(role, {}).get('id')
             db.execute(
@@ -529,7 +531,7 @@ def register(app):
                 (package_id, i, role, status, approver_id))
         db.commit()
 
-        first_role = config.APPROVAL_CHAIN[0][0]
+        first_role = chain[0][0]
         first_approver = team.get(first_role, {})
         if first_approver.get('id'):
             notify(first_approver['id'], 'approval',
@@ -564,7 +566,7 @@ def register(app):
                 (package_id, return_to))
         db.commit()
 
-        target_role = return_to or config.APPROVAL_CHAIN[0][0]
+        target_role = return_to or get_chain_for_object(full['object_id'], 'ks')[0][0]
         # Уведомить конкретного согласующего (по approver_id шага), иначе всю роль
         pending_step = query_db(
             "SELECT approver_id FROM approval_steps WHERE package_id = ? AND role = ? AND status = 'pending'",
@@ -615,7 +617,7 @@ def register(app):
                 pkgs = query_db(base + "WHERE dp.status = 'completed' ORDER BY dp.completed_at DESC")
             else:
                 pkgs = query_db(base + "WHERE dp.status != 'completed' ORDER BY dp.created_at DESC")
-        elif current_user.role in dict(config.APPROVAL_CHAIN):
+        elif current_user.role in CHAIN_ROLES:
             # Согласующие роли: только свои pending (по approver_id или роли) + архив
             if tab == 'archive':
                 pkgs = query_db(base + "WHERE dp.status = 'completed' ORDER BY dp.completed_at DESC")
@@ -641,7 +643,7 @@ def register(app):
         pkgs = out
 
         my_pending = []
-        if current_user.role in dict(config.APPROVAL_CHAIN):
+        if current_user.role in CHAIN_ROLES:
             my_pending = query_db(
                 "SELECT a.package_id FROM approval_steps a "
                 "WHERE (a.approver_id = ? OR (a.approver_id IS NULL AND a.role = ?)) AND a.status = 'pending'",
@@ -698,7 +700,7 @@ def register(app):
     # ═══ Согласование / возврат ═══
 
     def _get_my_pending_step(package_id):
-        if current_user.role not in dict(config.APPROVAL_CHAIN):
+        if current_user.role not in CHAIN_ROLES:
             return None
         return query_db(
             "SELECT * FROM approval_steps WHERE package_id = ? AND status = 'pending' "
@@ -734,7 +736,7 @@ def register(app):
             db.commit()
 
             next_role = next_step['role']
-            role_label = dict(config.APPROVAL_CHAIN).get(current_user.role, current_user.role)
+            role_label = CHAIN_ROLES.get(current_user.role, current_user.role)
             if next_step.get('approver_id'):
                 notify(next_step['approver_id'], 'approval',
                        f'Ваша очередь: пакет «{full["substage_name"]}»',
@@ -796,7 +798,7 @@ def register(app):
             return redirect(url_for('package_detail', package_id=package_id))
 
         full = _get_package_full(package_id)
-        role_label = dict(config.APPROVAL_CHAIN).get(current_user.role, current_user.role)
+        role_label = CHAIN_ROLES.get(current_user.role, current_user.role)
 
         db = get_db()
         db.execute(

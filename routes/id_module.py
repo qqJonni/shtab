@@ -5,7 +5,8 @@ from flask_login import login_required, current_user
 
 import config
 from db import get_db, query_db, execute_db, notify
-from helpers import role_required, assert_object_access, get_object_team
+from helpers import role_required, assert_object_access, get_object_team, \
+    get_chain_for_object, CHAIN_ROLES
 
 # Роли, которые могут набирать/редактировать состав ИД
 ID_EDITORS = ('manager', 'pto', 'inspector', 'admin')
@@ -267,8 +268,7 @@ def register(app):
                 pkg['contractor_id'] == current_user.organization_id)
 
     def _get_my_id_pending_step(pkg_id):
-        chain_roles = [r for r, _ in config.ID_APPROVAL_CHAIN]
-        if current_user.role not in chain_roles:
+        if current_user.role not in CHAIN_ROLES:
             return None
         return query_db(
             "SELECT * FROM id_approval_steps WHERE package_id = %s AND status = 'pending' "
@@ -297,8 +297,8 @@ def register(app):
         return render_template('id/package_detail.html',
                                pkg=pkg, steps=steps, my_step=my_step,
                                id_items=id_items,
-                               chain=config.ID_APPROVAL_CHAIN,
-                               chain_labels=dict(config.ID_APPROVAL_CHAIN),
+                               chain=get_chain_for_object(pkg['object_id'], 'id'),
+                               chain_labels=CHAIN_ROLES,
                                is_contractor=_is_id_pkg_contractor(pkg))
 
     # ─── Отправить пакет ИД на приёмку ──────────────────────────────────────
@@ -336,8 +336,9 @@ def register(app):
 
         # Проверяем команду объекта
         team = get_object_team(stage['object_id'])
-        chain_roles = [role for role, _ in config.ID_APPROVAL_CHAIN]
-        missing = [dict(config.ID_APPROVAL_CHAIN).get(r, r) for r in chain_roles if r not in team]
+        chain = get_chain_for_object(stage['object_id'], 'id')
+        chain_roles = [role for role, _ in chain]
+        missing = [dict(chain).get(r, r) for r in chain_roles if r not in team]
         if missing:
             flash(f'Нельзя отправить: в команде объекта не назначены — {", ".join(missing)}. '
                   'Руководитель должен назначить команду на странице объекта.', 'danger')
@@ -352,7 +353,7 @@ def register(app):
         db.execute(
             'UPDATE id_packages SET submitted_at = CURRENT_TIMESTAMP WHERE id = %s', (pkg_id,))
 
-        for i, (role, _) in enumerate(config.ID_APPROVAL_CHAIN, 1):
+        for i, (role, _) in enumerate(chain, 1):
             status = 'pending' if i == 1 else 'waiting'
             approver_id = team.get(role, {}).get('id')
             db.execute(
@@ -361,7 +362,7 @@ def register(app):
                 (pkg_id, i, role, status, approver_id))
         db.commit()
 
-        first_role = config.ID_APPROVAL_CHAIN[0][0]
+        first_role = chain[0][0]
         first_approver = team.get(first_role, {})
         if first_approver.get('id'):
             notify(first_approver['id'], 'approval',
@@ -402,7 +403,7 @@ def register(app):
                 (pkg_id, return_to))
         db.commit()
 
-        target_role = return_to or config.ID_APPROVAL_CHAIN[0][0]
+        target_role = return_to or get_chain_for_object(pkg['object_id'], 'id')[0][0]
         pending_step = query_db(
             "SELECT approver_id FROM id_approval_steps WHERE package_id = %s AND role = %s AND status = 'pending'",
             (pkg_id, target_role), one=True)
@@ -449,7 +450,7 @@ def register(app):
         if next_step:
             db.execute("UPDATE id_approval_steps SET status = 'pending' WHERE id = %s", (next_step['id'],))
             db.commit()
-            role_label = dict(config.ID_APPROVAL_CHAIN).get(current_user.role, current_user.role)
+            role_label = CHAIN_ROLES.get(current_user.role, current_user.role)
             if next_step.get('approver_id'):
                 notify(next_step['approver_id'], 'approval',
                        f'Ваша очередь: пакет ИД «{full["stage_name"]}»',
@@ -506,7 +507,7 @@ def register(app):
             return redirect(url_for('id_package_detail', pkg_id=pkg_id))
 
         full = _get_id_package_full(pkg_id)
-        role_label = dict(config.ID_APPROVAL_CHAIN).get(current_user.role, current_user.role)
+        role_label = CHAIN_ROLES.get(current_user.role, current_user.role)
         db = get_db()
         db.execute(
             "UPDATE id_approval_steps SET status = 'returned', approver_id = %s, "

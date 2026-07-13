@@ -73,9 +73,48 @@ TEAM_ROLES = [
 # ═══ Настройки тенанта ═══════════════════════════════════════════════════
 # Дефолты = текущее поведение системы. Ненастроенный тенант работает как раньше.
 
-TENANT_DEFAULTS = {
-    # наполняется модулем «Настройки» по шагам (цепочки, видимость модулей и т.д.)
+import json as _json
+
+# Допустимые роли цепочек согласования (фиксированный набор)
+CHAIN_ROLES = {
+    'inspector':  'Технадзор',
+    'foreman':    'Прораб',
+    'pto':        'Инженер ПТО',
+    'manager':    'Руководитель',
+    'accountant': 'Бухгалтер',
 }
+
+TENANT_DEFAULTS = {
+    # цепочки согласования: JSON-списки ролей; дефолт = константы config
+    'approval_chain_ks': _json.dumps(['inspector', 'foreman', 'pto', 'manager', 'accountant']),
+    'approval_chain_id': _json.dumps(['inspector', 'pto', 'manager']),
+}
+
+
+def _parse_chain(raw, default_key):
+    """JSON-список ролей → [(role, label)]. Невалидное → дефолт."""
+    try:
+        roles = _json.loads(raw)
+        assert isinstance(roles, list) and roles
+        assert all(r in CHAIN_ROLES for r in roles)
+        assert len(set(roles)) == len(roles)
+    except (ValueError, TypeError, AssertionError):
+        roles = _json.loads(TENANT_DEFAULTS[default_key])
+    return [(r, CHAIN_ROLES[r]) for r in roles]
+
+
+def get_chain_for_object(object_id, kind='ks'):
+    """Цепочка согласования для объекта: настройка ТЕНАНТА ОБЪЕКТА
+    (organizations застройщика через objects.developer_id) или дефолт.
+
+    kind: 'ks' (пакеты КС) | 'id' (исполнительная документация).
+    Возвращает [(role, label), ...]. Применяется ТОЛЬКО при создании
+    новых пакетов — активные идут по шагам, уже записанным в БД."""
+    from db import query_db
+    key = f'approval_chain_{kind}'
+    row = query_db('SELECT developer_id FROM objects WHERE id = ?', (object_id,), one=True)
+    dev_id = row['developer_id'] if row else None
+    return _parse_chain(get_tenant_setting(dev_id, key), key)
 
 
 def get_tenant_setting(org_id, key, default=None):

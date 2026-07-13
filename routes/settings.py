@@ -1,8 +1,11 @@
 """Страница «Настройки»: личные / организация (тенант) / платформа."""
-from flask import render_template, abort
+import json
+from flask import render_template, redirect, url_for, request, flash, abort
 from flask_login import login_required, current_user
 
 from db import query_db
+from helpers import (role_required, CHAIN_ROLES, get_tenant_setting, set_tenant_setting,
+                     _parse_chain)
 
 
 def _areas_for(user):
@@ -26,9 +29,60 @@ def register(app):
             abort(403)
 
         org = None
+        chains = None
         if area == 'organization' and current_user.organization_id:
             org = query_db('SELECT * FROM organizations WHERE id = ?',
                            (current_user.organization_id,), one=True)
+            oid = current_user.organization_id
+            chains = {
+                'ks': _parse_chain(get_tenant_setting(oid, 'approval_chain_ks'), 'approval_chain_ks'),
+                'id': _parse_chain(get_tenant_setting(oid, 'approval_chain_id'), 'approval_chain_id'),
+            }
 
         return render_template('settings/index.html',
-                               area=area, areas=areas, org=org)
+                               area=area, areas=areas, org=org,
+                               chains=chains, chain_roles=CHAIN_ROLES)
+
+    def _assert_org_settings(user):
+        """Тенант, чьи настройки правит пользователь (manager своей орг). admin — 403 без орг."""
+        if user.role == 'manager' and user.organization_id:
+            return user.organization_id
+        abort(403)
+
+    @app.route('/settings/organization/chains', methods=['POST'])
+    @login_required
+    @role_required('manager', 'admin')
+    def settings_chains_save():
+        org_id = _assert_org_settings(current_user)
+        kind = request.form.get('kind', '')
+        if kind not in ('ks', 'id'):
+            abort(400)
+        roles = request.form.getlist('roles')
+        # валидация: непустой, из допустимого набора, без дублей
+        if not roles:
+            flash('Цепочка не может быть пустой — оставьте хотя бы одну роль.', 'danger')
+            return redirect(url_for('settings_page', area='organization'))
+        if any(r not in CHAIN_ROLES for r in roles):
+            flash('Недопустимая роль в цепочке.', 'danger')
+            return redirect(url_for('settings_page', area='organization'))
+        if len(set(roles)) != len(roles):
+            flash('Роль не может повторяться в цепочке.', 'danger')
+            return redirect(url_for('settings_page', area='organization'))
+        set_tenant_setting(org_id, f'approval_chain_{kind}', json.dumps(roles))
+        label = 'КС' if kind == 'ks' else 'ИД'
+        flash(f'Цепочка согласования {label} сохранена. Применится к новым пакетам.', 'success')
+        return redirect(url_for('settings_page', area='organization'))
+
+    @app.route('/settings/organization/chains/reset', methods=['POST'])
+    @login_required
+    @role_required('manager', 'admin')
+    def settings_chains_reset():
+        org_id = _assert_org_settings(current_user)
+        kind = request.form.get('kind', '')
+        if kind not in ('ks', 'id'):
+            abort(400)
+        from db import execute_db
+        execute_db('DELETE FROM tenant_settings WHERE organization_id = ? AND key = ?',
+                   (org_id, f'approval_chain_{kind}'))
+        flash('Цепочка сброшена к стандартной.', 'info')
+        return redirect(url_for('settings_page', area='organization'))
