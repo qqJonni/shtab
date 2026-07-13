@@ -42,7 +42,28 @@
       <div class="card h-100">
         <div class="card-body p-4">
           <h6 class="fw-bold mb-2"><i class="bi bi-bell me-1"></i>Уведомления</h6>
-          <p class="text-muted mb-0" style="font-size:13px">Push-уведомления и типы событий — появятся на следующем шаге настройки.</p>
+          <form method="post" action="{{ url_for('settings_personal_notify') }}">
+            <div class="form-check mb-2">
+              <input class="form-check-input" type="checkbox" checked disabled id="p_inapp">
+              <label class="form-check-label" for="p_inapp" style="font-size:14px">В приложении <span class="text-muted" style="font-size:11px">(всегда)</span></label>
+            </div>
+            <div class="form-check mb-2">
+              <input class="form-check-input" type="checkbox" name="channel_push" id="p_push" {% if pnotify.push %}checked{% endif %}>
+              <label class="form-check-label" for="p_push" style="font-size:14px">Push-уведомления</label>
+            </div>
+            <div class="form-check mb-2">
+              <input class="form-check-input" type="checkbox" name="channel_email" id="p_email" {% if pnotify.email %}checked{% endif %}
+                     {% if not email_enabled %}disabled{% endif %}>
+              <label class="form-check-label" for="p_email" style="font-size:14px">Email
+                {% if not email_enabled %}<span class="text-muted" style="font-size:11px">(SMTP не настроен)</span>{% endif %}</label>
+            </div>
+            <hr class="my-2">
+            <div class="form-check mb-3">
+              <input class="form-check-input" type="checkbox" name="digest_subscribed" id="p_digest" {% if pnotify.digest %}checked{% endif %}>
+              <label class="form-check-label" for="p_digest" style="font-size:14px">Еженедельный дайджест</label>
+            </div>
+            <button type="submit" class="btn btn-sm btn-primary">Сохранить</button>
+          </form>
         </div>
       </div>
     </div>
@@ -193,10 +214,53 @@
         </form>
       </div></div>
     </div>
-    <div class="col-md-6">
-      <div class="card h-100"><div class="card-body p-4">
-        <h6 class="fw-bold mb-2"><i class="bi bi-envelope-paper me-1"></i>Уведомления тенанта</h6>
-        <p class="text-muted mb-0" style="font-size:13px">Еженедельный дайджест: получатели и расписание — на следующих шагах.</p>
+    <div class="col-12">
+      <div class="card"><div class="card-body p-4">
+        <h6 class="fw-bold mb-3"><i class="bi bi-envelope-paper me-1"></i>Уведомления организации</h6>
+        <form method="post" action="{{ url_for('settings_tenant_notify') }}">
+          <div class="row g-4">
+            <div class="col-md-4">
+              <div class="fw-semibold mb-2" style="font-size:13px">Каналы доставки</div>
+              {% for ch, chlabel in notify_channel_labels.items() %}
+              <div class="form-check mb-1">
+                <input class="form-check-input" type="checkbox" name="channels" value="{{ ch }}"
+                       id="tc_{{ ch }}" {% if ch in tnotify.channels %}checked{% endif %}
+                       {% if ch == 'in_app' %}disabled{% endif %}
+                       {% if ch == 'email' and not email_enabled %}disabled{% endif %}>
+                <label class="form-check-label" for="tc_{{ ch }}" style="font-size:13px">{{ chlabel }}
+                  {% if ch == 'in_app' %}<span class="text-muted" style="font-size:11px">(базовый)</span>
+                  {% elif ch == 'email' and not email_enabled %}<span class="text-muted" style="font-size:11px">(SMTP не настроен)</span>{% endif %}</label>
+                {% if ch == 'in_app' %}<input type="hidden" name="channels" value="in_app">{% endif %}
+              </div>
+              {% endfor %}
+            </div>
+            <div class="col-md-4">
+              <div class="fw-semibold mb-2" style="font-size:13px">Типы событий</div>
+              {% for t, tlabel in notify_types.items() %}
+              <div class="form-check mb-1">
+                <input class="form-check-input" type="checkbox" name="types" value="{{ t }}"
+                       id="tt_{{ t }}" {% if t in tnotify.types %}checked{% endif %}>
+                <label class="form-check-label" for="tt_{{ t }}" style="font-size:13px">{{ tlabel }}</label>
+              </div>
+              {% endfor %}
+            </div>
+            <div class="col-md-4">
+              <div class="fw-semibold mb-2" style="font-size:13px">Еженедельный дайджест</div>
+              <div class="form-check mb-2">
+                <input class="form-check-input" type="checkbox" name="digest_enabled" id="t_digest" {% if tnotify.digest_enabled %}checked{% endif %}>
+                <label class="form-check-label" for="t_digest" style="font-size:13px">Включён</label>
+              </div>
+              <label class="form-label mb-1" style="font-size:12px">День рассылки</label>
+              <select name="digest_weekday" class="form-select form-select-sm" style="max-width:180px;font-size:13px">
+                {% for i in range(7) %}
+                  <option value="{{ i }}" {% if tnotify.digest_weekday == i %}selected{% endif %}>{{ weekdays[i] }}</option>
+                {% endfor %}
+              </select>
+              <div class="form-text" style="font-size:11px">Получатели: руководитель, ПТО, админ — подписанные.</div>
+            </div>
+          </div>
+          <div class="mt-3"><button type="submit" class="btn btn-sm btn-primary">Сохранить</button></div>
+        </form>
       </div></div>
     </div>
   </div>

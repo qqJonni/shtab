@@ -793,6 +793,16 @@ def run_migrations(conn):
             UNIQUE(organization_id, key)
         )
     ''')
+    # Личные настройки пользователя (каналы уведомлений, подписка на дайджест)
+    cur.execute('''
+        CREATE TABLE IF NOT EXISTS user_settings (
+            id SERIAL PRIMARY KEY,
+            user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            key TEXT NOT NULL,
+            value TEXT,
+            UNIQUE(user_id, key)
+        )
+    ''')
 
     # ГПР (график производства работ): даты план/факт
     for col in ('plan_start_date', 'actual_start_date', 'actual_end_date'):

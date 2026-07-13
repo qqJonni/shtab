@@ -275,18 +275,20 @@ def _build_digest_pdf(obj, d):
 # ── Функция еженедельной рассылки (вызывается из cron-скрипта) ──────────────
 
 
-def send_weekly_digests(app=None):
+def send_weekly_digests(app=None, force=False):
     """
-    Формирует сводку по каждому активному объекту и шлёт notify()
-    всем пользователям с ролью 'manager' или 'admin'.
+    Рассылает сводку ПО РАСПИСАНИЮ ТЕНАНТА. Запускать ежедневно (cron):
+    для каждого developer-тенанта проверяется digest_enabled и digest_weekday
+    (== сегодня). Дедуп — по tenant_settings.digest_last_sent (не чаще раза в день).
+    Получатели: manager/admin тенанта, подписанные на дайджест (digest_subscribed),
+    по активным объектам тенанта. force=True игнорирует расписание/дедуп.
 
     Вызов: python3 -c "from routes.digest import send_weekly_digests; send_weekly_digests()"
-    или через Flask app_context, если импортируется из приложения.
     """
     import sys
+    from datetime import date
 
     if app is None:
-        # Запуск вне Flask — создаём контекст сами
         sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
         from dotenv import load_dotenv
         load_dotenv()
@@ -296,51 +298,63 @@ def send_weekly_digests(app=None):
     with app.app_context():
         from digest import object_digest
         from db import query_db as qdb, notify as _notify
+        from helpers import (get_tenant_setting, set_tenant_setting,
+                             get_user_setting)
 
-        objects = qdb("SELECT id, name FROM objects WHERE status = 'active'")
-        managers = qdb("SELECT id FROM users WHERE role IN ('manager', 'admin')")
+        today = date.today()
+        today_str = today.isoformat()
+        weekday = today.weekday()   # 0=пн
 
-        if not managers:
-            print('send_weekly_digests: нет получателей (manager/admin)')
-            return
+        # Тенанты-застройщики, у которых есть активные объекты
+        tenants = qdb("SELECT DISTINCT o.developer_id as id, org.name "
+                      "FROM objects o JOIN organizations org ON o.developer_id = org.id "
+                      "WHERE o.status = 'active' AND o.developer_id IS NOT NULL")
+        total_sent = 0
+        for t in tenants:
+            tid = t['id']
+            if not force:
+                if get_tenant_setting(tid, 'digest_enabled', '1') != '1':
+                    continue
+                if int(get_tenant_setting(tid, 'digest_weekday', '0')) != weekday:
+                    continue
+                if get_tenant_setting(tid, 'digest_last_sent') == today_str:
+                    continue   # уже слали сегодня
 
-        sent = 0
-        for obj in objects:
-            try:
-                d = object_digest(obj['id'], period_days=7)
-            except Exception as e:
-                print(f'  объект {obj["id"]} — ошибка digest: {e}')
+            objects = qdb("SELECT id, name FROM objects WHERE status = 'active' AND developer_id = ?", (tid,))
+            recipients = qdb("SELECT id FROM users WHERE organization_id = ? AND is_approved = 1 "
+                             "AND role IN ('manager', 'admin', 'pto')", (tid,))
+            # фильтр подписки на дайджест (дефолт — подписан)
+            recipients = [r for r in recipients if get_user_setting(r['id'], 'digest_subscribed', '1') == '1']
+            if not recipients:
                 continue
 
-            # Краткая выжимка для тела уведомления
-            parts = [f'Готовность {d["progress_pct"]}% ({d["sub_done"]}/{d["sub_total"]})']
-            if d['sub_overdue']:
-                parts.append(f'⚠ просрочено {d["sub_overdue"]} подэт.')
-            if d['defects_open']:
-                parts.append(f'{d["defects_open"]} замечаний')
-            if d['pkgs_stalled']:
-                parts.append(f'{d["pkgs_stalled"]} пакетов зависло')
-            if d['period_completed_sum']:
-                parts.append(f'выполнено за неделю: {_fmt_money(d["period_completed_sum"])}')
-
-            body = ' · '.join(parts)
-            link = f'/objects/{obj["id"]}/digest'
-
-            for mgr in managers:
+            for obj in objects:
                 try:
-                    _notify(
-                        mgr['id'],
-                        'digest',
-                        f'Еженедельная сводка: {obj["name"]}',
-                        body,
-                        link,
-                    )
-                    sent += 1
+                    d = object_digest(obj['id'], period_days=7)
                 except Exception as e:
-                    print(f'  notify user {mgr["id"]} — ошибка: {e}')
+                    print(f'  объект {obj["id"]} — ошибка digest: {e}')
+                    continue
+                parts = [f'Готовность {d["progress_pct"]}% ({d["sub_done"]}/{d["sub_total"]})']
+                if d['sub_overdue']:
+                    parts.append(f'⚠ просрочено {d["sub_overdue"]} подэт.')
+                if d['defects_open']:
+                    parts.append(f'{d["defects_open"]} замечаний')
+                if d['pkgs_stalled']:
+                    parts.append(f'{d["pkgs_stalled"]} пакетов зависло')
+                if d['period_completed_sum']:
+                    parts.append(f'выполнено за неделю: {_fmt_money(d["period_completed_sum"])}')
+                body = ' · '.join(parts)
+                link = f'/objects/{obj["id"]}/digest'
+                for r in recipients:
+                    try:
+                        _notify(r['id'], 'digest', f'Еженедельная сводка: {obj["name"]}', body, link)
+                        total_sent += 1
+                    except Exception as e:
+                        print(f'  notify user {r["id"]} — ошибка: {e}')
 
-        print(f'send_weekly_digests: отправлено {sent} уведомлений '
-              f'({len(list(objects))} объектов, {len(list(managers))} получателей)')
+            set_tenant_setting(tid, 'digest_last_sent', today_str)
+
+        print(f'send_weekly_digests: отправлено {total_sent} уведомлений')
 
 
 def register(app):

@@ -5,7 +5,11 @@ from flask_login import login_required, current_user
 
 from db import query_db
 from helpers import (role_required, CHAIN_ROLES, get_tenant_setting, set_tenant_setting,
-                     _parse_chain, MODULE_ACCESS, _access_roles)
+                     _parse_chain, MODULE_ACCESS, _access_roles,
+                     NOTIFY_CHANNELS, NOTIFY_CHANNEL_LABELS, NOTIFY_TYPES,
+                     get_user_setting, set_user_setting, _json_list)
+
+WEEKDAYS = ['Понедельник', 'Вторник', 'Среда', 'Четверг', 'Пятница', 'Суббота', 'Воскресенье']
 
 # Роли, доступные для назначения в переключателях модулей (без admin — он всегда)
 ACCESS_ASSIGNABLE = {
@@ -42,6 +46,9 @@ def register(app):
 
         org = None
         chains = None
+        access = None
+        tnotify = None
+        import config as _cfg
         if area == 'organization' and current_user.organization_id:
             org = query_db('SELECT * FROM organizations WHERE id = ?',
                            (current_user.organization_id,), one=True)
@@ -51,13 +58,56 @@ def register(app):
                 'id': _parse_chain(get_tenant_setting(oid, 'approval_chain_id'), 'approval_chain_id'),
             }
             access = {m: _access_roles(oid, m) for m in MODULE_ACCESS}
+            tnotify = {
+                'channels': set(_json_list(get_tenant_setting(oid, 'notify_channels'), NOTIFY_CHANNELS)),
+                'types': set(_json_list(get_tenant_setting(oid, 'notify_types'), list(NOTIFY_TYPES))),
+                'digest_enabled': get_tenant_setting(oid, 'digest_enabled', '1') == '1',
+                'digest_weekday': int(get_tenant_setting(oid, 'digest_weekday', '0')),
+            }
+
+        # личные настройки уведомлений
+        pnotify = {
+            'email': get_user_setting(current_user.id, 'channel_email', '1') == '1',
+            'push': get_user_setting(current_user.id, 'channel_push', '1') == '1',
+            'digest': get_user_setting(current_user.id, 'digest_subscribed', '1') == '1',
+        }
 
         return render_template('settings/index.html',
                                area=area, areas=areas, org=org,
                                chains=chains, chain_roles=CHAIN_ROLES,
-                               access=access if org else None,
+                               access=access,
                                access_assignable=ACCESS_ASSIGNABLE,
-                               module_labels=MODULE_LABELS)
+                               module_labels=MODULE_LABELS,
+                               tnotify=tnotify, pnotify=pnotify,
+                               notify_channel_labels=NOTIFY_CHANNEL_LABELS,
+                               notify_types=NOTIFY_TYPES, weekdays=WEEKDAYS,
+                               email_enabled=_cfg.email_enabled())
+
+    @app.route('/settings/personal/notifications', methods=['POST'])
+    @login_required
+    def settings_personal_notify():
+        set_user_setting(current_user.id, 'channel_email', '1' if request.form.get('channel_email') else '0')
+        set_user_setting(current_user.id, 'channel_push', '1' if request.form.get('channel_push') else '0')
+        set_user_setting(current_user.id, 'digest_subscribed', '1' if request.form.get('digest_subscribed') else '0')
+        flash('Настройки уведомлений сохранены.', 'success')
+        return redirect(url_for('settings_page', area='personal'))
+
+    @app.route('/settings/organization/notifications', methods=['POST'])
+    @login_required
+    @role_required('manager', 'admin')
+    def settings_tenant_notify():
+        org_id = _assert_org_settings(current_user)
+        channels = [c for c in request.form.getlist('channels') if c in NOTIFY_CHANNELS]
+        if 'in_app' not in channels:
+            channels.append('in_app')   # базовый канал нельзя выключить
+        types = [t for t in request.form.getlist('types') if t in NOTIFY_TYPES]
+        set_tenant_setting(org_id, 'notify_channels', json.dumps(channels))
+        set_tenant_setting(org_id, 'notify_types', json.dumps(types))
+        set_tenant_setting(org_id, 'digest_enabled', '1' if request.form.get('digest_enabled') else '0')
+        wd = request.form.get('digest_weekday', '0')
+        set_tenant_setting(org_id, 'digest_weekday', wd if wd in [str(i) for i in range(7)] else '0')
+        flash('Настройки уведомлений организации сохранены.', 'success')
+        return redirect(url_for('settings_page', area='organization'))
 
     def _assert_org_settings(user):
         """Тенант, чьи настройки правит пользователь (manager своей орг). admin — 403 без орг."""

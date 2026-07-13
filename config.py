@@ -9,6 +9,18 @@ SECRET_KEY = os.environ.get('SECRET_KEY', 'dev-secret-change-me')
 
 DATABASE_URL = os.environ.get('DATABASE_URL', 'postgresql://localhost/shtab')
 
+# Email (SMTP) — канал уведомлений. Если EMAIL_HOST пуст, канал недоступен.
+EMAIL_HOST = os.environ.get('EMAIL_HOST', '')
+EMAIL_PORT = int(os.environ.get('EMAIL_PORT', '587') or '587')
+EMAIL_USER = os.environ.get('EMAIL_USER', '')
+EMAIL_PASSWORD = os.environ.get('EMAIL_PASSWORD', '')
+EMAIL_FROM = os.environ.get('EMAIL_FROM', '') or EMAIL_USER
+EMAIL_USE_TLS = os.environ.get('EMAIL_USE_TLS', '1') not in ('0', 'false', 'False', '')
+
+
+def email_enabled():
+    return bool(EMAIL_HOST and EMAIL_FROM)
+
 ROLES = {
     'admin':      'Администратор',
     'manager':    'Руководитель',

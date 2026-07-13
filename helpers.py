@@ -91,6 +91,72 @@ TENANT_DEFAULTS = {
 }
 
 
+NOTIFY_CHANNELS = ['in_app', 'email', 'push']   # in_app — базовый (запись в БД)
+NOTIFY_CHANNEL_LABELS = {'in_app': 'В приложении', 'email': 'Email', 'push': 'Push-уведомления'}
+NOTIFY_TYPES = {'approval': 'Согласования', 'defect': 'Замечания', 'supply': 'Снабжение'}
+
+TENANT_DEFAULTS['notify_channels'] = _json.dumps(['in_app', 'email', 'push'])
+TENANT_DEFAULTS['notify_types'] = _json.dumps(['approval', 'defect', 'supply'])
+TENANT_DEFAULTS['digest_enabled'] = '1'
+TENANT_DEFAULTS['digest_weekday'] = '0'   # 0 = понедельник
+
+
+def get_user_setting(user_id, key, default=None):
+    from db import query_db
+    row = query_db('SELECT value FROM user_settings WHERE user_id = ? AND key = ?',
+                   (user_id, key), one=True)
+    return row['value'] if row is not None else default
+
+
+def set_user_setting(user_id, key, value):
+    from db import get_db
+    db = get_db()
+    db.execute(
+        'INSERT INTO user_settings (user_id, key, value) VALUES (?, ?, ?) '
+        'ON CONFLICT (user_id, key) DO UPDATE SET value = EXCLUDED.value',
+        (user_id, key, str(value) if value is not None else None))
+    db.commit()
+
+
+def _json_list(raw, fallback):
+    try:
+        v = _json.loads(raw)
+        return v if isinstance(v, list) else fallback
+    except (ValueError, TypeError):
+        return fallback
+
+
+def recipient_channels_and_types(user_id):
+    """Для notify(): (активные_каналы:set, разрешённые_типы:set) получателя.
+
+    Каналы = пересечение(каналы тенанта, каналы пользователя); email доступен
+    только при настроенном SMTP. Типы — роутинг тенанта (для developer-ролей).
+    Дефолты = всё включено (текущее поведение)."""
+    import config
+    from db import query_db
+    u = query_db('SELECT role, organization_id FROM users WHERE id = ?', (user_id,), one=True)
+    if not u:
+        return {'in_app'}, set(NOTIFY_TYPES)
+    tenant = u['organization_id'] if u['role'] not in ('admin', 'contractor') else None
+
+    tenant_channels = set(_json_list(get_tenant_setting(tenant, 'notify_channels'),
+                                     ['in_app', 'email', 'push']))
+    allowed_types = set(_json_list(get_tenant_setting(tenant, 'notify_types'),
+                                   ['approval', 'defect', 'supply']))
+
+    # пользовательские каналы: in_app всегда доступен, email/push — по флагу (дефолт вкл)
+    user_channels = {'in_app'}
+    if get_user_setting(user_id, 'channel_email', '1') == '1':
+        user_channels.add('email')
+    if get_user_setting(user_id, 'channel_push', '1') == '1':
+        user_channels.add('push')
+
+    channels = tenant_channels & user_channels
+    if 'email' in channels and not config.email_enabled():
+        channels.discard('email')
+    return channels, allowed_types
+
+
 def _parse_chain(raw, default_key):
     """JSON-список ролей → [(role, label)]. Невалидное → дефолт."""
     try:
