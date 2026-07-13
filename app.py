@@ -85,6 +85,30 @@ def create_app():
         return {'now_date': date.today().isoformat()}
 
     @app.context_processor
+    def inject_access_helpers():
+        from flask_login import current_user
+        if not current_user.is_authenticated:
+            return {}
+        from helpers import can_see_finance, can_access
+        # логотип тенанта (developer-роли): показывается в шапке/сайдбаре
+        brand_logo = None
+        brand_name = None
+        if current_user.role not in ('admin', 'contractor') and current_user.organization_id:
+            org = query_db('SELECT logo, name FROM organizations WHERE id = ?',
+                           (current_user.organization_id,), one=True)
+            if org:
+                brand_name = org['name']
+                if org['logo']:
+                    brand_logo = f"logos/{current_user.organization_id}/{org['logo']}"
+        return {
+            'can_see_finance': can_see_finance(current_user),
+            'can_access_gpr': can_access(current_user, 'gpr'),
+            'can_access_digest': can_access(current_user, 'digest'),
+            'brand_logo': brand_logo,
+            'brand_name': brand_name,
+        }
+
+    @app.context_processor
     def inject_static_version():
         # cache-busting для crm.css: версия = mtime файла
         css_path = os.path.join(app.static_folder, 'css', 'crm.css')
@@ -106,9 +130,10 @@ def create_app():
 
 
 def register_routes(app):
-    from routes import auth, notifications, dashboards, objects, defects, packages, supply, export, guest, admin, report_page, plans, journal, pwa, smeta, digest, id_module, schedule
+    from routes import auth, notifications, dashboards, objects, defects, packages, supply, export, guest, admin, report_page, plans, journal, pwa, smeta, digest, id_module, schedule, settings as settings_module
     auth.register(app)
     schedule.register(app)
+    settings_module.register(app)
     notifications.register(app)
     dashboards.register(app)
     objects.register(app)
@@ -758,6 +783,27 @@ def run_migrations(conn):
         ON CONFLICT (package_id, substage_id) DO NOTHING
     ''')
 
+    # Настройки тенанта (key-value по организации-застройщику)
+    cur.execute('''
+        CREATE TABLE IF NOT EXISTS tenant_settings (
+            id SERIAL PRIMARY KEY,
+            organization_id INTEGER NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+            key TEXT NOT NULL,
+            value TEXT,
+            UNIQUE(organization_id, key)
+        )
+    ''')
+    # Личные настройки пользователя (каналы уведомлений, подписка на дайджест)
+    cur.execute('''
+        CREATE TABLE IF NOT EXISTS user_settings (
+            id SERIAL PRIMARY KEY,
+            user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            key TEXT NOT NULL,
+            value TEXT,
+            UNIQUE(user_id, key)
+        )
+    ''')
+
     # ГПР (график производства работ): даты план/факт
     for col in ('plan_start_date', 'actual_start_date', 'actual_end_date'):
         if not _col_exists('substages', col):
@@ -825,6 +871,8 @@ def run_migrations(conn):
     # Онбординг подрядчиков: какой тенант завёл организацию
     if not _col_exists('organizations', 'created_by_org'):
         cur.execute('ALTER TABLE organizations ADD COLUMN created_by_org INTEGER REFERENCES organizations(id)')
+    if not _col_exists('organizations', 'logo'):
+        cur.execute('ALTER TABLE organizations ADD COLUMN logo TEXT')
 
     # Мультитенантность: тенант объекта
     if not _col_exists('objects', 'developer_id'):

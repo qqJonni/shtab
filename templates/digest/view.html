@@ -94,7 +94,7 @@
   <div class="col-6 col-lg-3">
     <div class="card h-100 p-3">
       <div class="text-muted mb-1" style="font-size:11px;text-transform:uppercase;letter-spacing:.5px">За {{ d.period_days }} дн.</div>
-      <div class="fw-bold" style="font-size:18px;color:var(--success)">{{ fmt_money(d.period_completed_sum) }}</div>
+      {% if can_see_finance %}<div class="fw-bold" style="font-size:18px;color:var(--success)">{{ fmt_money(d.period_completed_sum) }}</div>{% endif %}
       <div style="font-size:12px;color:#64748B">{{ d.sub_done_week }} подэт. завершено</div>
       {% if d.pkgs_completed_week > 0 %}
         <div style="font-size:12px;color:#64748B">{{ d.pkgs_completed_week }} пакет(ов) КС закрыто</div>
@@ -264,7 +264,7 @@
         </div>
         <div class="text-end" style="white-space:nowrap">
           <span class="text-muted" style="font-size:12px">{{ fmt_date(s.completed_at) }}</span>
-          {% if s.total_price %}
+          {% if s.total_price and can_see_finance %}
             <span class="ms-3 fw-medium" style="color:var(--success)">{{ fmt_money(s.total_price) }}</span>
           {% endif %}
         </div>
@@ -343,6 +343,7 @@
 {# ══════════════════════════════════════════════════════════════════════
    ДЕНЬГИ
 ══════════════════════════════════════════════════════════════════════ #}
+{% if can_see_finance %}
 <div class="card mb-4">
   <div class="card-body p-4">
     <h6 class="fw-bold mb-3"><i class="bi bi-currency-exchange me-2" style="color:var(--primary)"></i>Деньги</h6>
@@ -389,6 +390,7 @@
     {% endif %}
   </div>
 </div>
+{% endif %}
 
 {# ══════════════════════════════════════════════════════════════════════
    ЭТАПЫ — таблица с прогрессом

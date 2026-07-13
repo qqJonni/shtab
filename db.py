@@ -135,14 +135,67 @@ def set_setting(key, value):
     db.commit()
 
 
+def _send_email(to_addr, subject, body, link=''):
+    """Отправка письма через SMTP. Никогда не бросает исключений.
+    Возвращает True при успехе. Если SMTP не настроен — тихо False."""
+    import config
+    if not config.email_enabled() or not to_addr:
+        return False
+    try:
+        import smtplib
+        from email.mime.text import MIMEText
+        from email.header import Header
+        text = body or ''
+        if link:
+            base = os.environ.get('APP_BASE_URL', 'https://shtab-crm.ru').rstrip('/')
+            text += f'\n\n{base}{link}'
+        msg = MIMEText(text, 'plain', 'utf-8')
+        msg['Subject'] = Header(subject, 'utf-8')
+        msg['From'] = config.EMAIL_FROM
+        msg['To'] = to_addr
+        server = smtplib.SMTP(config.EMAIL_HOST, config.EMAIL_PORT, timeout=10)
+        if config.EMAIL_USE_TLS:
+            server.starttls()
+        if config.EMAIL_USER:
+            server.login(config.EMAIL_USER, config.EMAIL_PASSWORD)
+        server.sendmail(config.EMAIL_FROM, [to_addr], msg.as_string())
+        server.quit()
+        return True
+    except Exception:
+        return False
+
+
+# Событийные типы, подпадающие под роутинг тенанта (вкл/выкл).
+# Системные (digest, user) шлются всегда.
+_ROUTABLE_TYPES = {'approval', 'defect', 'supply'}
+
+
 def notify(user_id, type, title, body='', link=''):
+    """Создаёт уведомление получателю с учётом настроек тенанта и пользователя.
+
+    - Тип-роутинг тенанта: если событийный тип выключен у тенанта получателя
+      (developer-роли) — уведомление не создаётся вообще.
+    - Каналы = пересечение(каналы тенанта, каналы пользователя):
+      in_app (запись в БД), push (web-push), email (SMTP).
+    - Дефолты = все каналы включены, все типы включены (текущее поведение)."""
+    from helpers import (recipient_channels_and_types, )
+    channels, allowed = recipient_channels_and_types(user_id)
+    if type in _ROUTABLE_TYPES and type not in allowed:
+        return  # тип выключен у тенанта получателя
+
     db = get_db()
-    db.execute(
-        'INSERT INTO notifications (user_id, type, title, body, link) VALUES (?, ?, ?, ?, ?)',
-        (user_id, type, title, body, link),
-    )
-    db.commit()
-    _send_web_push_to_user(user_id, title, body, link)
+    if 'in_app' in channels:
+        db.execute(
+            'INSERT INTO notifications (user_id, type, title, body, link) VALUES (?, ?, ?, ?, ?)',
+            (user_id, type, title, body, link),
+        )
+        db.commit()
+    if 'push' in channels:
+        _send_web_push_to_user(user_id, title, body, link)
+    if 'email' in channels:
+        row = query_db('SELECT email FROM users WHERE id = ?', (user_id,), one=True)
+        if row and row['email']:
+            _send_email(row['email'], title, body, link)
 
 
 def _send_web_push_to_user(user_id, title, body, link):

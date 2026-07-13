@@ -298,5 +298,44 @@ templates/schedule/view.html — экран: кастомный SVG/CSS-Гант
 
 ---
 
+## Модуль «Настройки» (тенант + пользователь) — влит в main (ветка tenant-settings)
+
+Конфигурация по тенанту (организация-застройщик) и по пользователю. **Дефолты = текущее поведение**: ненастроенный тенант работает как раньше. Переключатели меняют доступ только ВНУТРИ тенанта — `assert_object_access` всегда поверх.
+
+### Хранилище и хелперы (helpers.py)
+- `tenant_settings(organization_id, key, value, UNIQUE)` + `get_tenant_setting/set_tenant_setting`; `current_tenant_setting(user, ...)`. `TENANT_DEFAULTS` — единая точка дефолтов.
+- `user_settings(user_id, key, value, UNIQUE)` + `get_user_setting/set_user_setting`.
+- Значения — TEXT; сложное (списки ролей) хранится JSON.
+
+### Настраиваемые цепочки согласования
+- `approval_chain_ks` / `approval_chain_id` (JSON-списки ролей из `CHAIN_ROLES`). Дефолт = константы `config.APPROVAL_CHAIN`/`ID_APPROVAL_CHAIN`.
+- `get_chain_for_object(object_id, kind)` — цепочка ТЕНАНТА ОБЪЕКТА (`developer_id`); читается при создании новых пакетов (packages.py/id_module.py). Активные пакеты идут по шагам, уже записанным в БД. Валидация `object_team` — по настроенной цепочке. Класс «согласующих ролей» (фильтры pending) — статический `CHAIN_ROLES`.
+
+### Переключатели видимости модулей (наборы ролей по тенанту)
+- `access_gpr` / `access_finance` / `access_digest` в `MODULE_ACCESS` (helpers.py) с дефолтными ролями = текущее поведение.
+- `can_access(user, module)`, `can_access_for_object(user, module, obj)` (по тенанту объекта — для contractor/кросс-тенант), `can_see_finance(user)` (contractor/admin всегда True). Ни один не заменяет `assert_object_access`.
+- Применение: ГПР/дайджест — роут-гарды (403) + скрытые ссылки; **финансы сквозняком** через context_processor `can_see_finance` (колонки цен/сумм пакета КС, карточка бюджета и режим ₽ S-кривой в ГПР, блок «Деньги» в дайджесте, колонка суммы на дашборде).
+- manager залочен в finance/digest (нельзя отрезать управление).
+
+### Брендинг и реквизиты
+- `organizations.logo` (файл, `static/logos/<org_id>/`, вне git); `save_org_logo()`. Реквизиты — существующие поля `organizations`.
+- Логотип тенанта в сайдбаре/мобильном бренде (context_processor `brand_logo`/`brand_name`); fallback — «ШТАБ». admin/contractor → всегда «ШТАБ».
+
+### Уведомления (два уровня)
+- Тенант: `notify_channels` [in_app/email/push], `notify_types` [approval/defect/supply], `digest_enabled`, `digest_weekday`, `digest_last_sent` (дедуп).
+- Пользователь: `channel_email`, `channel_push`, `digest_subscribed`. `in_app` — базовый, не выключается.
+- `notify()` (db.py): тип-роутинг тенанта (событийный тип выкл → не создаётся; digest/user всегда); каналы = пересечение(тенант, пользователь); email только при настроенном SMTP. contractor/admin — тип-фильтр не действует.
+- Email: `config.EMAIL_*` из `.env` (`db._send_email`, smtplib+TLS, `APP_BASE_URL` для ссылок); без SMTP тихо пропускается.
+- Cron `send_weekly_digests()` — **запускать ежедневно**: по каждому тенанту `digest_enabled` + `digest_weekday==сегодня` + дедуп; получатели manager/admin/pto тенанта, подписанные, по объектам тенанта. `force=True` — ручной прогон.
+
+### Страница `/settings/<area>` (routes/settings.py)
+Области: **personal** (все — профиль, каналы, подписка на дайджест), **organization** (manager своего тенанта, admin — цепочки, доступы, реквизиты/логотип, уведомления), **platform** (admin). Чужая область → 403. Пункт «Настройки» в сайдбаре/мобильном меню.
+
+### Деплой-заметки
+- Для email добавить `EMAIL_HOST/PORT/USER/PASSWORD/FROM` в серверный `.env`.
+- Cron дайджеста переключить с недельного на **ежедневный** (расписание теперь пер-тенантное).
+
+---
+
 ## Рабочий процесс
 Модулями (0–6, см. мастер-спецификацию). Для каждого — отдельное ТЗ с критериями приёмки, шаги по одному, после шага — самопроверка. Перед стартом модуля — `git checkout -b <модуль>`.

@@ -62,8 +62,8 @@
           <th>Подэтап</th>
           <th class="text-end">Объём к закрытию</th>
           <th>Ед.</th>
-          <th class="text-end">Цена</th>
-          <th class="text-end">Сумма</th>
+          {% if can_see_finance %}<th class="text-end">Цена</th>
+          <th class="text-end">Сумма</th>{% endif %}
         </tr>
       </thead>
       <tbody>
@@ -77,17 +77,21 @@
           </td>
           <td class="text-end">{{ '{:,.2f}'.format(it.qty).replace(',', ' ') if it.qty is not none else 'полностью' }}</td>
           <td class="text-muted">{{ it.unit or '—' }}</td>
+          {% if can_see_finance %}
           <td class="text-end text-muted">{{ '{:,.2f}'.format(it.unit_price).replace(',', ' ') if it.unit_price is not none else '—' }}</td>
           <td class="text-end fw-medium">{{ '{:,.2f}'.format(it.amount).replace(',', ' ') if it.amount is not none else '—' }}</td>
+          {% endif %}
         </tr>
         {% endfor %}
       </tbody>
+      {% if can_see_finance %}
       <tfoot>
         <tr>
           <td colspan="4" class="text-end fw-bold">Итого:</td>
           <td class="text-end fw-bold">{{ '{:,.2f}'.format(pkg['items_total']).replace(',', ' ') }} ₽</td>
         </tr>
       </tfoot>
+      {% endif %}
     </table>
   </div>
 </div>
