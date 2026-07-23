@@ -337,5 +337,16 @@ templates/schedule/view.html — экран: кастомный SVG/CSS-Гант
 
 ---
 
+## Модуль «Публичный лендинг /preview» — влит в main (ветка landing-preview)
+
+Маркетинговая витрина продукта по адресу `/preview` — публичная, без авторизации и без данных клиентов.
+
+- `routes/landing.py`: `GET /preview` (публичный, без @login_required, ничего не читает из БД кроме записи заявки); `POST /preview/lead` — форма заявки; `/admin/leads` — список для admin/manager.
+- Шаблон `templates/landing/preview.html` — **самостоятельный** (свой `<!doctype>`, не наследует base.html). Стили — `static/css/landing.css` (cache-busting `landing_version` = mtime; crm.css не трогается). PDF презентации в `static/ШТАБ_Презентация.pdf`.
+- Форма «Запросить демо»: honeypot-поле `website` + rate-limit по IP (`_LAST_LEAD`, 60 сек); таблица `landing_leads` (идемпотентно в init_db); запись + `notify()` admin/manager.
+- Публичность работает автоматически: в приложении нет глобального login-гейта, `@login_required` навешивается точечно. Лендинг его просто не имеет (как гостевой `guest_view`).
+- Контент строго по копирайту ТЗ; адаптив 375/768/1280, mobile-first.
+
+
 ## Рабочий процесс
 Модулями (0–6, см. мастер-спецификацию). Для каждого — отдельное ТЗ с критериями приёмки, шаги по одному, после шага — самопроверка. Перед стартом модуля — `git checkout -b <модуль>`.
