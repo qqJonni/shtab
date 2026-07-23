@@ -1,14 +1,18 @@
 """Публичный лендинг /preview — витрина продукта, без авторизации и без данных."""
+import os
 import re
 import time
 
 from flask import render_template, request, redirect, url_for, flash
 
-from db import query_db, execute_db, get_db, notify
+from db import query_db, execute_db, get_db, notify, _send_email
 
 # Простой rate-limit по IP (в памяти процесса): не чаще 1 заявки в 60 сек.
 _LAST_LEAD = {}
 _RATE_SECONDS = 60
+
+# Куда дублировать заявки письмом (переопределяется через env LEAD_EMAIL)
+LEAD_EMAIL = os.environ.get('LEAD_EMAIL', 'tepliy_shov@mail.ru')
 
 CONTACT = {
     'name': 'Львов Валерий Вадимович',
@@ -65,13 +69,22 @@ def register(app):
         _LAST_LEAD[ip] = now
 
         # уведомить admin/manager (в приложении; email/push — если настроены)
+        body = (f'{name}, тел. {phone}' + (f', {company}' if company else '') +
+                (f'. {comment}' if comment else ''))
         recipients = query_db("SELECT id FROM users WHERE role IN ('admin', 'manager') AND is_approved = 1")
         for u in recipients:
-            notify(u['id'], 'user',
-                   f'Заявка с лендинга: {name}',
-                   f'{name}, тел. {phone}' + (f', {company}' if company else '') +
-                   (f'. {comment}' if comment else ''),
-                   '/admin/leads')
+            notify(u['id'], 'user', f'Заявка с лендинга: {name}', body, '/admin/leads')
+
+        # письмо с заявкой на почту владельца (если настроен SMTP; иначе тихо пропускается)
+        mail_body = (
+            'Новая заявка с лендинга shtab-crm.ru/preview\n\n'
+            f'Имя:        {name}\n'
+            f'Телефон:    {phone}\n'
+            f'Компания:   {company or "—"}\n'
+            f'Комментарий: {comment or "—"}\n\n'
+            f'IP: {ip or "—"}'
+        )
+        _send_email(LEAD_EMAIL, f'ШТАБ · заявка с лендинга: {name}', mail_body)
 
         flash('Спасибо! Заявка принята — свяжемся с вами в ближайшее время.', 'success')
         return redirect(url_for('landing_preview') + '#contact')
