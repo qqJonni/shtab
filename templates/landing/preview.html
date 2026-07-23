@@ -1,0 +1,239 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>ШТАБ — управление строительством и документооборотом для застройщика</title>
+  <meta name="description" content="Платформа управления строительством полного цикла и документооборотом для застройщика. Аналог PlanRadar в России — на языке КС-2 / КС-3 и исполнительной, дешевле, под процессы клиента.">
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="ШТАБ — управление строительством для застройщика">
+  <meta property="og:description" content="Весь объект — в одной системе: закрытие КС, исполнительная, замечания, снабжение, график производства работ.">
+  <meta property="og:url" content="https://shtab-crm.ru/preview">
+  <meta property="og:image" content="https://shtab-crm.ru/static/icons/icon-512.png">
+  <link rel="icon" href="{{ url_for('static', filename='favicon.ico') }}" type="image/x-icon">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link href="{{ url_for('static', filename='css/landing.css', v=landing_version) }}" rel="stylesheet">
+</head>
+<body>
+
+{# ═══ Шапка ═══ #}
+<header class="lp-header">
+  <div class="lp-container">
+    <nav class="lp-nav">
+      <a href="#top" class="lp-logo"><span class="mark">Ш</span>ШТАБ</a>
+      <button class="lp-burger" id="lpBurger" aria-label="Меню">☰</button>
+      <div class="lp-nav-links" id="lpNav">
+        <a href="#features">Возможности</a>
+        <a href="#how">Как работает</a>
+        <a href="#why">Почему мы</a>
+        <a href="#contact" class="lp-btn lp-btn-primary lp-btn-sm">Запросить демо</a>
+      </div>
+    </nav>
+  </div>
+</header>
+
+<span id="top"></span>
+
+{# ═══ Hero ═══ #}
+<section class="lp-hero">
+  <div class="lp-container lp-hero-center">
+    <h1>ШТАБ</h1>
+    <p class="lead">Платформа управления строительством полного цикла и документооборотом для застройщика</p>
+    <p class="accent">Аналог PlanRadar — в России, на языке КС-2 / КС-3 и исполнительной, дешевле, под процессы клиента</p>
+    <div class="cta-row">
+      <a href="#contact" class="lp-btn lp-btn-primary">Запросить демо</a>
+      <a href="#features" class="lp-btn lp-btn-ghost">Смотреть возможности</a>
+    </div>
+    <div class="lp-chip-flow">
+      <span class="lp-chip">Объект</span><span class="lp-chip-arrow">→</span>
+      <span class="lp-chip">Этап</span><span class="lp-chip-arrow">→</span>
+      <span class="lp-chip">Подэтап</span><span class="lp-chip-arrow">→</span>
+      <span class="lp-chip">Закрытие КС + ИД</span><span class="lp-chip-arrow">→</span>
+      <span class="lp-chip">Контроль</span>
+    </div>
+  </div>
+</section>
+
+{# ═══ Проблема ═══ #}
+<section class="lp-section">
+  <div class="lp-container">
+    <p class="lp-eyebrow">Проблема</p>
+    <h2 class="lp-h2">Как обычно устроена стройка сегодня</h2>
+    <div class="lp-numlist">
+      <div class="lp-numrow"><div class="lp-num">1</div><div><h3>Стройка «в голове» и в переписке</h3><p>Нет единой картины по объекту: что сделано, кем, на какой стадии.</p></div></div>
+      <div class="lp-numrow"><div class="lp-num">2</div><div><h3>КС-2 / КС-3 считают вручную в Excel</h3><p>Долго, ошибки, споры по объёмам и деньгам с подрядчиками.</p></div></div>
+      <div class="lp-numrow"><div class="lp-num">3</div><div><h3>Исполнительную собирают в аврале перед сдачей</h3><p>Риск завалить приёмку, часть документов теряется.</p></div></div>
+      <div class="lp-numrow"><div class="lp-num">4</div><div><h3>Документы и фото разбросаны</h3><p>Почта, чаты, папки; при споре нечего быстро поднять.</p></div></div>
+      <div class="lp-numrow"><div class="lp-num">5</div><div><h3>Руководитель не видит объект, пока не приедет</h3><p>Контроль сроков и денег по звонкам, а не по данным.</p></div></div>
+    </div>
+  </div>
+</section>
+
+{# ═══ Как работает ═══ #}
+<section class="lp-section tint" id="how">
+  <div class="lp-container">
+    <p class="lp-eyebrow">Как работает</p>
+    <h2 class="lp-h2">ШТАБ: весь объект — в одной системе</h2>
+    <div class="lp-flow">
+      <div class="lp-flow-block">Объект</div><div class="lp-flow-arrow">→</div>
+      <div class="lp-flow-block">Этап строительства</div><div class="lp-flow-arrow">→</div>
+      <div class="lp-flow-block">Подэтап (работа)</div><div class="lp-flow-arrow">→</div>
+      <div class="lp-flow-block accent">Закрытие: КС + ИД</div><div class="lp-flow-arrow">→</div>
+      <div class="lp-flow-block accent">Контроль и отчётность</div>
+    </div>
+    <p class="lp-sub" style="margin-top:28px">Каждая работа несёт своё: срок, объём и единицу, подрядчика, статус, фото и документы. Смету можно загрузить файлом (Excel / PDF) — система сама разложит её на подэтапы.</p>
+    <div class="lp-banner">
+      <h3>Принцип «всё в одном»</h3>
+      <p>Тендер, договор, закрытие работ, документы, замечания, снабжение и график — не в пяти разных программах и Excel, а в единой системе с общими данными по объекту.</p>
+    </div>
+  </div>
+</section>
+
+{# ═══ Возможности ═══ #}
+<section class="lp-section" id="features">
+  <div class="lp-container">
+    <p class="lp-eyebrow">Возможности</p>
+    <h2 class="lp-h2">Ключевые блоки системы</h2>
+    <div class="lp-grid lp-grid-3">
+      <div class="lp-card"><h3>Закрытие работ и КС</h3><p>Пакеты КС по этапу, многострочные, с процентовкой; маршрут согласования технадзор → прораб → ПТО → руководитель → бухгалтерия с возвратами; генерация КС-2, КС-3 (накопительно), счёт-фактуры.</p></div>
+      <div class="lp-card"><h3>Исполнительная документация (ИД)</h3><p>Чек-лист по этапу, загрузка файлов подрядчиком, контроль готовности; согласование технадзор → ПТО → руководитель; этап нельзя закрыть без принятой ИД.</p></div>
+      <div class="lp-card"><h3>Замечания (контроль качества)</h3><p>Приоритеты и статусы, фото и аудио, пины на планах этажей, сроки и просрочки, история.</p></div>
+      <div class="lp-card"><h3>Снабжение</h3><p>Заявки на материалы по маршруту ПТО → снабженец, учёт давальческого материала и отчёт по нему.</p></div>
+      <div class="lp-card"><h3>График производства работ (ГПР)</h3><p>Диаграмма Ганта план/факт, отклонения и светофор рисков, S-кривая освоения (% и ₽), baseline и вехи; факт обновляется сам по мере закрытия работ; экспорт PDF / Excel.</p></div>
+      <div class="lp-card"><h3>Контроль для руководителя</h3><p>Дашборды по ролям, дайджест по объекту (+ PDF, авторассылка), журнал производства работ, выгрузка в Excel.</p></div>
+    </div>
+  </div>
+</section>
+
+{# ═══ Всё в одном ═══ #}
+<section class="lp-section tint">
+  <div class="lp-container">
+    <p class="lp-eyebrow">Всё в одном</p>
+    <h2 class="lp-h2">Модули системы</h2>
+    <div class="lp-tiles">
+      <span class="lp-tile">Объекты и этапы</span>
+      <span class="lp-tile">Закрытие КС</span>
+      <span class="lp-tile">Исполнительная</span>
+      <span class="lp-tile">Замечания</span>
+      <span class="lp-tile">Снабжение</span>
+      <span class="lp-tile">График (ГПР)</span>
+      <span class="lp-tile">Дайджест</span>
+      <span class="lp-tile">Журнал работ</span>
+    </div>
+    <div class="lp-facts">
+      <div class="lp-fact"><div class="big">9 ролей</div><p>Разграничение доступа: руководитель, ПТО, технадзор, прораб, снабженец, бухгалтер, подрядчик, гость по ссылке</p></div>
+      <div class="lp-fact"><div class="big">Веб + телефон</div><p>Браузер и смартфон, PWA — работает с площадки и из офиса</p></div>
+      <div class="lp-fact"><div class="big">Данные в России</div><p>Мультитенантность, изоляция застройщиков друг от друга</p></div>
+    </div>
+  </div>
+</section>
+
+{# ═══ Что даёт застройщику ═══ #}
+<section class="lp-section">
+  <div class="lp-container">
+    <p class="lp-eyebrow">Результат</p>
+    <h2 class="lp-h2">Что даёт застройщику</h2>
+    <div class="lp-grid lp-grid-2">
+      <div class="lp-check"><div class="tick">✓</div><div><h3>Приёмку проходят с первого раза</h3><p>Исполнительная готова заранее, а не в ночь перед сдачей.</p></div></div>
+      <div class="lp-check"><div class="tick">✓</div><div><h3>Документы и деньги под контролем</h3><p>Единый маршрут КС, контроль объёмов, ничего не теряется.</p></div></div>
+      <div class="lp-check"><div class="tick">✓</div><div><h3>Объекты видны из телефона</h3><p>Руководитель контролирует сроки, график и стройку удалённо.</p></div></div>
+      <div class="lp-check"><div class="tick">✓</div><div><h3>Меньше споров с подрядчиками</h3><p>Прозрачные объёмы, замечания и согласования по данным, а не на словах.</p></div></div>
+    </div>
+  </div>
+</section>
+
+{# ═══ Почему ШТАБ ═══ #}
+<section class="lp-section tint" id="why">
+  <div class="lp-container">
+    <p class="lp-eyebrow">Отличия</p>
+    <h2 class="lp-h2">Почему ШТАБ</h2>
+    <div class="lp-numlist">
+      <div class="lp-numrow"><div class="lp-num">1</div><div><h3>В России, данные в РФ</h3><p>Спокойно с 152-ФЗ; не зависите от ушедших зарубежных вендоров.</p></div></div>
+      <div class="lp-numrow"><div class="lp-num">2</div><div><h3>На языке наших документов</h3><p>КС-2, КС-3, исполнительная — родные формы, а не адаптация под РФ.</p></div></div>
+      <div class="lp-numrow"><div class="lp-num">3</div><div><h3>Дешевле</h3><p>Ниже PlanRadar и российских аналогов при том же наборе задач.</p></div></div>
+      <div class="lp-numrow"><div class="lp-num">4</div><div><h3>Под ваши процессы</h3><p>Настраиваемые цепочки согласования, роли, доступы, брендинг.</p></div></div>
+      <div class="lp-numrow"><div class="lp-num">5</div><div><h3>Всё в одном</h3><p>Не набор из пяти программ и Excel, а единая система по объекту.</p></div></div>
+    </div>
+  </div>
+</section>
+
+{# ═══ Оффер / контакт ═══ #}
+<section class="lp-section dark" id="contact">
+  <div class="lp-container">
+    <div class="lp-grid lp-grid-2" style="gap:44px;align-items:start">
+      <div>
+        <p class="lp-eyebrow">Предложение</p>
+        <h2 class="lp-h2">Предлагаем пилот</h2>
+        <p class="lp-sub">Бесплатно, на одном вашем объекте. Настройку и заведение объекта берём на себя — от вас минимум трудозатрат на старте.</p>
+        <div class="lp-steps">
+          <div class="lp-step"><div class="n">1</div><h3>Живая демонстрация</h3><p>Показ системы в Zoom на реальном примере, 20 минут.</p></div>
+          <div class="lp-step"><div class="n">2</div><h3>Запуск пилота</h3><p>Заводим ваш объект, подключаем команду.</p></div>
+          <div class="lp-step"><div class="n">3</div><h3>Оценка результата</h3><p>Смотрите на своих данных и решаете.</p></div>
+        </div>
+        <div class="lp-contact-row">
+          <span>{{ contact.name }}</span>
+          <a href="tel:{{ contact.phone_tel }}">{{ contact.phone_display }}</a>
+          <a href="mailto:{{ contact.email }}">{{ contact.email }}</a>
+          <span>{{ contact.site }}</span>
+        </div>
+        {% if has_pdf %}
+        <a href="{{ url_for('static', filename='ШТАБ_Презентация.pdf') }}" class="lp-btn lp-btn-ghost lp-btn-sm" download>Скачать презентацию (PDF)</a>
+        {% endif %}
+      </div>
+
+      {# Форма заявки #}
+      <div class="lp-form">
+        <h3>Запросить демо</h3>
+        <p class="hint">Оставьте контакты — покажем систему и обсудим пилот.</p>
+        {% with msgs = get_flashed_messages(with_categories=true) %}
+          {% for cat, msg in msgs %}
+            <div class="lp-alert {{ cat }}">{{ msg }}</div>
+          {% endfor %}
+        {% endwith %}
+        <form method="post" action="{{ url_for('landing_lead') }}" id="lpForm">
+          <div class="lp-hp"><label>Website<input type="text" name="website" tabindex="-1" autocomplete="off"></label></div>
+          <label>Имя <span style="color:#EF4444">*</span></label>
+          <input type="text" name="name" required maxlength="120" placeholder="Как к вам обращаться">
+          <label>Телефон <span style="color:#EF4444">*</span></label>
+          <input type="tel" name="phone" required maxlength="30" placeholder="+7 ___ ___-__-__">
+          <label>Компания</label>
+          <input type="text" name="company" maxlength="160" placeholder="Название организации (необязательно)">
+          <label>Комментарий</label>
+          <textarea name="comment" maxlength="800" placeholder="Что хотите посмотреть? (необязательно)"></textarea>
+          <button type="submit" class="lp-btn lp-btn-primary" style="width:100%">Отправить заявку</button>
+        </form>
+      </div>
+    </div>
+  </div>
+</section>
+
+{# ═══ Подвал ═══ #}
+<footer class="lp-footer">
+  <div class="lp-container">
+    <div class="row">
+      <div><strong style="color:#fff">ШТАБ</strong> · <a href="https://shtab-crm.ru">shtab-crm.ru</a></div>
+      <div><a href="tel:{{ contact.phone_tel }}">{{ contact.phone_display }}</a> · <a href="mailto:{{ contact.email }}">{{ contact.email }}</a></div>
+      <div>© {{ now_date[:4] if now_date else '2026' }} ШТАБ</div>
+    </div>
+  </div>
+</footer>
+
+<script>
+(function () {
+  var burger = document.getElementById('lpBurger');
+  var nav = document.getElementById('lpNav');
+  burger.addEventListener('click', function () { nav.classList.toggle('open'); });
+  nav.querySelectorAll('a').forEach(function (a) {
+    a.addEventListener('click', function () { nav.classList.remove('open'); });
+  });
+  // простая клиентская валидация телефона
+  var form = document.getElementById('lpForm');
+  form.addEventListener('submit', function (e) {
+    var phone = form.querySelector('[name=phone]').value.replace(/\D/g, '');
+    if (phone.length < 10) { e.preventDefault(); alert('Проверьте номер телефона.'); }
+  });
+})();
+</script>
+</body>
+</html>
