@@ -112,11 +112,16 @@ def create_app():
     def inject_static_version():
         # cache-busting для crm.css: версия = mtime файла
         css_path = os.path.join(app.static_folder, 'css', 'crm.css')
+        landing_path = os.path.join(app.static_folder, 'css', 'landing.css')
         try:
             v = int(os.path.getmtime(css_path))
         except OSError:
             v = 0
-        return {'static_version': v}
+        try:
+            lv = int(os.path.getmtime(landing_path))
+        except OSError:
+            lv = 0
+        return {'static_version': v, 'landing_version': lv}
 
     @app.errorhandler(403)
     def forbidden(e):
@@ -130,10 +135,11 @@ def create_app():
 
 
 def register_routes(app):
-    from routes import auth, notifications, dashboards, objects, defects, packages, supply, export, guest, admin, report_page, plans, journal, pwa, smeta, digest, id_module, schedule, settings as settings_module
+    from routes import auth, notifications, dashboards, objects, defects, packages, supply, export, guest, admin, report_page, plans, journal, pwa, smeta, digest, id_module, schedule, landing, settings as settings_module
     auth.register(app)
     schedule.register(app)
     settings_module.register(app)
+    landing.register(app)
     notifications.register(app)
     dashboards.register(app)
     objects.register(app)
@@ -791,6 +797,20 @@ def run_migrations(conn):
             key TEXT NOT NULL,
             value TEXT,
             UNIQUE(organization_id, key)
+        )
+    ''')
+    # Заявки с публичного лендинга /preview
+    cur.execute('''
+        CREATE TABLE IF NOT EXISTS landing_leads (
+            id SERIAL PRIMARY KEY,
+            name TEXT NOT NULL,
+            phone TEXT NOT NULL,
+            company TEXT,
+            comment TEXT,
+            ip TEXT,
+            user_agent TEXT,
+            status TEXT NOT NULL DEFAULT 'new',
+            created_at TEXT DEFAULT to_char(now(),'YYYY-MM-DD HH24:MI:SS')
         )
     ''')
     # Личные настройки пользователя (каналы уведомлений, подписка на дайджест)
