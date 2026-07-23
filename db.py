@@ -153,9 +153,13 @@ def _send_email(to_addr, subject, body, link=''):
         msg['Subject'] = Header(subject, 'utf-8')
         msg['From'] = config.EMAIL_FROM
         msg['To'] = to_addr
-        server = smtplib.SMTP(config.EMAIL_HOST, config.EMAIL_PORT, timeout=10)
-        if config.EMAIL_USE_TLS:
-            server.starttls()
+        # порт 465 → неявный SSL; иначе SMTP + STARTTLS
+        if int(config.EMAIL_PORT) == 465:
+            server = smtplib.SMTP_SSL(config.EMAIL_HOST, config.EMAIL_PORT, timeout=20)
+        else:
+            server = smtplib.SMTP(config.EMAIL_HOST, config.EMAIL_PORT, timeout=20)
+            if config.EMAIL_USE_TLS:
+                server.starttls()
         if config.EMAIL_USER:
             server.login(config.EMAIL_USER, config.EMAIL_PASSWORD)
         server.sendmail(config.EMAIL_FROM, [to_addr], msg.as_string())
